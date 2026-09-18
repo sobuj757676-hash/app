@@ -1,0 +1,189 @@
+{
+  "project_identity": {
+    "name": "VoltCraft HDB - Singapore Electrical PM OS",
+    "description": "Enterprise-grade Singapore HDB electrical project management software for multi-block, floor-stack unit tracking, RTO approvals, Megger insulation testing, workforce, material inventory, and SGD expense management.",
+    "supported_languages": ["English", "Bangla (বাংলা)", "Chinese (中文)"],
+    "archetype": "Performance Pro & Swiss Precision Engineering",
+    "design_philosophy": "Tactical minimalism, field-first clarity, extreme data density for multi-block floor stacks, zero visual fluff, high-contrast status feedback for RTO inspections and insulation testing."
+  },
+  "typography": {
+    "heading_font": "Outfit, sans-serif",
+    "body_font": "Inter, sans-serif",
+    "mono_font": "JetBrains Mono, monospace",
+    "scale": {
+      "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight",
+      "h3": "text-xl sm:text-2xl font-semibold",
+      "h4": "text-lg font-medium",
+      "body": "text-sm sm:text-base leading-relaxed text-slate-300 dark:text-slate-300 light:text-slate-700",
+      "caption": "text-xs font-mono uppercase tracking-widest text-slate-400"
+    },
+    "guidelines": "Do NOT use Inter for main headings. Use Outfit or Cabinet Grotesk style for headings and reserve Inter/JetBrains Mono for table cells, unit numbers, megger readings, and timestamps."
+  },
+  "colors": {
+    "mode": "dark_preferred_with_light_toggle",
+    "palette": {
+      "background_dark": "#0B0F17",
+      "surface_dark": "#111827",
+      "surface_dark_elevated": "#1F2937",
+      "border_dark": "#374151",
+      "primary_brand": "#2563EB",
+      "accent_amber": "#F59E0B",
+      "accent_electric": "#38BDF8",
+      "status_completed_approved": "#10B981",
+      "status_in_progress": "#3B82F6",
+      "status_hacking_wiring": "#8B5CF6",
+      "status_rework_failed": "#EF4444",
+      "status_pending_rto": "#F59E0B",
+      "status_not_started": "#6B7280",
+      "text_primary": "#F9FAFB",
+      "text_secondary": "#9CA3AF",
+      "text_muted": "#6B7280"
+    },
+    "contrast_rules": "Always maintain min 4.5:1 contrast ratio. Never use #000000 flat black; tint background with deep navy/slate (#0B0F17). Set explicit hover text colors (e.g. hover:bg-slate-800 hover:text-white). Do NOT use transparent backgrounds on headers or overlays."
+  },
+  "layout_and_grid": {
+    "dashboard_mode": "High Density Dashboard Grid (Mode B)",
+    "container_padding": "p-4 sm:p-6 lg:p-8",
+    "gap_size": "gap-4 sm:gap-6",
+    "grid_cols": "grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-12",
+    "floor_stack_matrix_rules": {
+      "display": "Matrix grid inspired by HDB physical site board charts.",
+      "y_axis": "Levels (Level 1 to Level 18+)",
+      "x_axis": "Unit Numbers (#01-450, #01-451, etc.)",
+      "blocks": ["Blk 35A", "Blk 35B", "Blk 36A", "Blk 36B", "Blk 36C"],
+      "cell_style": "Compact interactive badge showing stage progress (1 to 9), RTO badge, and Megger status color."
+    }
+  },
+  "workflow_stages": [
+    {
+      "step": 1,
+      "code": "PVC_CASTING",
+      "name_en": "1. Slab PVC Pipe Laying (Pre-Casting)",
+      "name_bn": "১. স্ল্যাব PVC পাইপ বসানো (কাস্টিং পূর্বে)",
+      "name_zh": "1. 浇筑前PVC管道铺设",
+      "color": "#6366F1"
+    },
+    {
+      "step": 2,
+      "code": "CASTING_DONE",
+      "name_en": "2. Slab Casting Complete",
+      "name_bn": "২. স্ল্যাব কাস্টিং সম্পন্ন",
+      "name_zh": "2. 楼板浇筑完成",
+      "color": "#3B82F6"
+    },
+    {
+      "step": 3,
+      "code": "POINT_HACKING",
+      "name_en": "3. Point Hacking & Conduit Exposure",
+      "name_bn": "৩. পয়েন্ট হ্যাকিং ও PVC বের করা",
+      "name_zh": "3. 凿穴与线管露头",
+      "color": "#8B5CF6"
+    },
+    {
+      "step": 4,
+      "code": "WIRING_PULLING",
+      "name_en": "4. Wire Pulling (Power, Light, Data, TV)",
+      "name_bn": "৪. তার টানা (পাওয়ার, লাইট, ডাটা, টিভি)",
+      "name_zh": "4. 穿线工程 (电源, 照明, 数据, 电视)",
+      "color": "#06B6D4"
+    },
+    {
+      "step": 5,
+      "code": "GI_GANG_BOX",
+      "name_en": "5. GI/PVC Pipe & Gang Box Installation",
+      "name_bn": "৫. GI/PVC পাইপ ও গ্যাং বক্স বসানো",
+      "name_zh": "5. GI/PVC管及底盒安装",
+      "color": "#10B981"
+    },
+    {
+      "step": 6,
+      "code": "RTO_INSPECTION",
+      "name_en": "6. RTO Site Inspection & Approval",
+      "name_bn": "৬. RTO সাইট পরিদর্শন ও অনুমোদন",
+      "name_zh": "6. RTO 现场验收与批准",
+      "color": "#F59E0B"
+    },
+    {
+      "step": 7,
+      "code": "CEMENT_PLASTERING",
+      "name_en": "7. Cement Plastering & Wall Patching",
+      "name_bn": "৭. সিমেন্ট প্লাস্টার ও প্যাচিং",
+      "name_zh": "7. 水泥抹灰与墙面修补",
+      "color": "#84CC16"
+    },
+    {
+      "step": 8,
+      "code": "ACCESSORIES_FIT",
+      "name_en": "8. Switch, Socket & DB Fitting",
+      "name_bn": "৮. সুইচ, সকেট ও ডিবি ফিটিং",
+      "name_zh": "8. 开关、插座及配电箱安装",
+      "color": "#14B8A6"
+    },
+    {
+      "step": 9,
+      "code": "MEGGER_TESTING",
+      "name_en": "9. Insulation Megger Testing (MΩ)",
+      "name_bn": "৯. ইনসুলেশন মেগার টেস্ট (MΩ)",
+      "name_zh": "9. 绝缘摇表测试 (MΩ)",
+      "color": "#EC4899"
+    }
+  ],
+  "image_urls": {
+    "hero_construction_team": "https://images.unsplash.com/photo-1504307651254-35680f356dfd?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwxfHxlbGVjdHJpY2FsJTIwd29ya2VyJTIwY29uc3RydWN0aW9uJTIwc2l0ZSUyMGluc3BlY3Rpb258ZW58MHx8fHwxNzg5NzQwOTUwfDA&ixlib=rb-4.1.0&q=85",
+    "electrical_site_workers": "https://images.unsplash.com/photo-1694521787149-ee0b6a3d9f78?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHw0fHxlbGVjdHJpY2FsJTIwd29ya2VyJTIwY29uc3RydWN0aW9uJTIwc2l0ZSUyMGluc3BlY3Rpb258ZW58MHx8fHwxNzg5NzQwOTUwfDA&ixlib=rb-4.1.0&q=85",
+    "conduit_measuring_team": "https://images.unsplash.com/photo-1694521787193-9293daeddbaa?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwyfHxlbGVjdHJpY2FsJTIwd29ya2VyJTIwY29uc3RydWN0aW9uJTIwc2l0ZSUyMGluc3BlY3Rpb258ZW58MHx8fHwxNzg5NzQwOTUwfDA&ixlib=rb-4.1.0&q=85",
+    "hdb_architecture_tower": "https://images.pexels.com/photos/35813347/pexels-photo-35813347.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "singapore_cityscape": "https://images.unsplash.com/photo-1525625293386-3f8f99389edd?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MDZ8MHwxfHNlYXJjaHwxfHxzaW5nYXBvcmUlMjBhcmNoaXRlY3R1cmUlMjBidWlsZGluZyUyMGNvbnN0cnVjdGlvbnxlbnwwfHx8fDE3ODk3NDA5NTh8MA&ixlib=rb-4.1.0&q=85"
+  },
+  "component_strategy": {
+    "navigation": "Sticky top bar with multi-lingual selector (EN/BN/ZH), Block quick-tabs (35A, 35B, 36A, 36B, 36C), quick search, export CSV trigger, and user role switcher (Site Engineer, RTO Inspector, Subcontractor, Manager).",
+    "dashboard_views": [
+      "Operational Overview & Stage Metrics",
+      "Digital Floor-Stack Unit Matrix",
+      "RTO Inspection & Rework Approval Center",
+      "Megger Insulation Test Ledger",
+      "Workforce & Daily Attendance (SGD)",
+      "Materials Inventory & Consumption Tracking",
+      "Project Expenses & Financial Ledger (SGD)"
+    ],
+    "shadcn_components": [
+      "Dialog / Sheet (For unit details and edit workflow stage)",
+      "Tabs (For switching blocks 35A-36C and dashboard sections)",
+      "Select / DropdownMenu (For filter by stage, language, RTO status)",
+      "Table (For workforce attendance, materials, and expense entries)",
+      "Badge (For live status, megger test result PASS/FAIL)",
+      "Progress (For overall block completion percentage)",
+      "Tooltip (For quick unit info on floor-stack matrix hover)"
+    ]
+  },
+  "accessibility_and_motion": {
+    "motion_library": "framer-motion for tab switches, drawer side-overs, and matrix modal dialogs.",
+    "micro_interactions": "Subtle scale-95 on button clicks, hover shadow elevation on unit matrix cells.",
+    "accessibility_rules": "Respect prefers-reduced-motion, aria-label on all matrix badges, aria-hidden on purely decorative SVG icons, high contrast borders for focus states."
+  },
+  "testing_attributes": {
+    "rule": "Every key interactive, metric, form field, modal, table row, and language option MUST have a clear data-testid attribute in kebab-case.",
+    "sample_testids": [
+      "data-testid=\"app-header-logo\"",
+      "data-testid=\"language-selector-dropdown\"",
+      "data-testid=\"block-nav-tab-35a\"",
+      "data-testid=\"matrix-unit-cell-35a-01-450\"",
+      "data-testid=\"update-unit-stage-button\"",
+      "data-testid=\"rto-approval-toggle-pass\"",
+      "data-testid=\"megger-reading-input-power-point\"",
+      "data-testid=\"add-worker-attendance-submit\"",
+      "data-testid=\"material-stock-table-row\"",
+      "data-testid=\"export-csv-report-button\""
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Build a fully usable, state-driven Singapore HDB Electrical PM React Web Application.",
+    "Support 3 languages: English, Bangla (বাংলা), and Chinese (中文) with an instant language switcher header dropdown.",
+    "Implement blocks 35A, 35B, 36A, 36B, 36C with realistic levels (Level 1 to 12+) and units per level (#01-450, #01-451, etc.) populated with rich editable sample data.",
+    "Provide interactive unit detail sheet/modal to advance any unit through the 9 sequential workflow steps: PVC Pipe -> Casting -> Hacking -> Wiring -> GI Box -> RTO Check -> Plastering -> Switch Fittings -> Insulation Megger Test.",
+    "Provide specific data views for workforce attendance, material inventory (PVC pipes, wires, boxes), and SGD expenses.",
+    "Add full data-testid attributes to all interactive elements, buttons, inputs, and status badges.",
+    "Do NOT use transparent header or dialog backgrounds. Ensure exact APCA accessibility contrast on dark slate background."
+  ]
+}

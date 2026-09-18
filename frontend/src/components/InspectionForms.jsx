@@ -1,0 +1,6 @@
+import {FormModal} from './Common';
+import {useLanguage} from '../lib/i18n';
+import {useWorkspace} from '../lib/store';
+import {today} from '../lib/api';
+export const InspectionRequest=({unit,onClose})=>{const {t}=useLanguage();const {mutate}=useWorkspace();return <FormModal open onClose={onClose} title={t('requestRto')} initial={{inspector:'',date:today(),note:''}} fields={[{name:'inspector',label:t('inspector')},{name:'date',label:t('date'),type:'date'},{name:'note',label:t('note'),type:'textarea',wide:true,required:false}]} onSubmit={v=>mutate('post',`/units/${unit.id}/inspections`,v)}/>;};
+export const InspectionDecision=({inspection,onClose})=>{const {t}=useLanguage();const {mutate}=useWorkspace();return <FormModal open onClose={onClose} title={`${t('reviewInspection')} · ${inspection.unit_label}`} initial={{inspector:inspection.inspector,result:'approved',note:''}} fields={[{name:'inspector',label:t('inspector')},{name:'result',label:t('result'),options:[{value:'approved',label:t('approve')},{value:'rework',label:t('requestRework')}]},{name:'note',label:t('inspectionNote'),type:'textarea',wide:true}]} onSubmit={v=>mutate('post',`/inspections/${inspection.id}/decision`,v)}/>;};

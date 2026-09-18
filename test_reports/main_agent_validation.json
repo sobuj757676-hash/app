@@ -1,0 +1,26 @@
+{
+  "date": "2026-09-18",
+  "iteration_report": "/app/test_reports/iteration_1.json",
+  "resolved": [
+    "Rejected sample reset now validates before any deletion and preserves all records; real stage/inspection/test writes disable sample reset.",
+    "Bangla activeProject string corrected; no replacement glyphs remain.",
+    "All five source photographs manually viewed; upright orientation and title mapping corrected and translated.",
+    "Global search expanded across all project blocks and verified 36B returns 48 of 465 units.",
+    "SGD cents preserved, sidebar made vertically scrollable, QA data cleaned."
+  ],
+  "verification": {
+    "backend_regression": "9 passed after fix; pytest_results_fixed.xml",
+    "frontend_build": "passed; build-final.log",
+    "python_compilation": "passed",
+    "browser": "dashboard, unit matrix/list and drawer, source photo modal, Bengali/Chinese, dark appearance, global search",
+    "responsive": "testing agent passed outer overflow checks at 390, 768, 1440",
+    "final_seed": {"blocks": 6, "units": 465, "workers": 12, "pending_inspections": 45, "qa_records_remaining": 0}
+  },
+  "remaining_scope_limitations": [
+    "No authentication or permissions: shared workspace; recorded RTO names are not verified identities.",
+    "Project deletion/archiving deferred; test-only data cleaned directly.",
+    "Manually recorded electrical test outcomes do not constitute safety certification.",
+    "Layouts/statuses and operational entries are editable example data, not site-verified records."
+  ],
+  "mocked_apis": []
+}

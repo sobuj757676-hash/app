@@ -1,0 +1,18 @@
+import {BrowserRouter,Routes,Route,Navigate} from 'react-router-dom';
+import {LanguageProvider} from './lib/i18n';
+import {WorkspaceProvider} from './lib/store';
+import {Toaster} from './components/ui/sonner';
+import {Layout} from './components/Layout';
+import Overview from './pages/Overview';
+import UnitTracker from './pages/UnitTracker';
+import Inspections from './pages/Inspections';
+import Testing from './pages/Testing';
+import Workforce from './pages/Workforce';
+import Materials from './pages/Materials';
+import Expenses from './pages/Expenses';
+import Projects from './pages/Projects';
+import Reports from './pages/Reports';
+import References from './pages/References';
+import Settings from './pages/Settings';
+import './App.css';
+function App(){return <LanguageProvider><WorkspaceProvider><BrowserRouter><Routes><Route element={<Layout/>}><Route path="/" element={<Overview/>}/><Route path="/projects" element={<Projects/>}/><Route path="/units" element={<UnitTracker/>}/><Route path="/inspections" element={<Inspections/>}/><Route path="/testing" element={<Testing/>}/><Route path="/workforce" element={<Workforce/>}/><Route path="/materials" element={<Materials/>}/><Route path="/expenses" element={<Expenses/>}/><Route path="/reports" element={<Reports/>}/><Route path="/references" element={<References/>}/><Route path="/settings" element={<Settings/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Route></Routes></BrowserRouter><Toaster richColors position="bottom-right"/></WorkspaceProvider></LanguageProvider>;}export default App;

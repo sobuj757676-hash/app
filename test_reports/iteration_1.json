@@ -1,0 +1,60 @@
+{
+  "summary": "Executed backend pytest regression (public endpoint) and frontend Playwright flows across project/unit lifecycle, workforce, materials, expenses, reports, references, and responsiveness.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "/api/units/{id}/reset-sample",
+        "issue": "Unsafe deletion order: sample tests/inspections are deleted before checking if real records exist. Reset then fails with 400, but sample records are already removed.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "References page tile mapping/content QA",
+        "issue": "Five images load, but visual content is very similar and title-to-photo mapping cannot be confidently validated from current assets; manual business verification still required.",
+        "selector": "[data-testid^='reference-photo-']",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Localized UI strings",
+        "issues": [
+          "Bangla translation contains corrupted glyphs in i18n key activeProject (mojibake), e.g. চলমান প্রক��্প."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_project_management_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix /api/units/{id}/reset-sample ordering: validate real records first, then delete sample records only if safe.",
+    "Re-check and correct Bangla i18n corrupted text entries in frontend/src/lib/i18n.js.",
+    "Manually verify reference photo-title mapping against source documentation (automation verified load/orientation-like rendering only)."
+  ],
+  "critical_code_review_comments": [
+    "reset-sample currently causes irreversible sample data loss on failed reset path.",
+    "No project delete/cleanup API exists; QA-created projects/data accumulate in shared workspace.",
+    "Localization quality issue: corrupted UTF-8 content present in Bangla strings."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_project_management_api.py",
+    "/app/test_reports/iteration_1.json"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "88%"
+  },
+  "test_credentials": "No auth flow in scope. /app/memory/test_credentials.md exists but has no credentials.",
+  "seed_data_creation": "Created QA data in shared workspace: API project TEST_QA_1789741796 + block QAB1796; UI project UI_QA_1789741959 + block UQ959 and related worker/material/expense records.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite is ready at /app/backend/tests/test_project_management_api.py and passes fully. UI core workflow (stage0->9 with RTO rework/resubmit/approve and point fail->retest pass) was validated on UI_QA_1789741959. References page loaded 5/5 images with modal open. Responsive overflow checks passed at 1440/768/390. Some Playwright runs timed out due route transition timing, not reproducible functional crash.",
+  "rca of the issue": "Reset-sample RCA: endpoint deletes sample tests/inspections first (`delete_many(sample=True)`), then checks whether any records remain. If a real record exists, endpoint returns 400 but sample data is already deleted. Repro: choose sample unit stage=5 with sample inspection; create real inspection via /units/{id}/inspections; call /units/{id}/reset-sample -> 400 and sample inspection count decreases. Mitigation: perform real-record existence check before any delete, or wrap check+delete+update in transaction."
+}
