@@ -10,6 +10,10 @@ import sys
 import types
 from pathlib import Path
 
+# Vercel loads this file as a top-level module, so add its own directory to
+# sys.path for the sibling imports below (routes, operations, seed, models).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
