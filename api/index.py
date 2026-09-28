@@ -49,11 +49,14 @@ app.add_middleware(
 from routes import router  # noqa: E402
 from operations import router as operations_router  # noqa: E402
 
-app.include_router(router, prefix="/api")
-app.include_router(operations_router, prefix="/api")
+# NOTE: Vercel strips the "/api" prefix when invoking functions under api/,
+# so routes are mounted without it here. The public URLs keep the prefix
+# (e.g. https://voltcraft-api.vercel.app/api/projects) via vercel.json.
+app.include_router(router)
+app.include_router(operations_router)
 
 
-@app.get("/api/health", include_in_schema=False)
+@app.get("/health", include_in_schema=False)
 async def vercel_health():
     return {"status": "ok", "app": "VoltCraft"}
 
