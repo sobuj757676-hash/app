@@ -1,0 +1,1 @@
+{"buildCommand":"npm run build --prefix frontend","installCommand":"npm install --prefix frontend","outputDirectory":"frontend/build","rewrites":[{"destination":"/api/index.py","source":"/api/(.*)"},{"destination":"/index.html","source":"/(.*)"}]}
