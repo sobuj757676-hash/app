@@ -6,11 +6,47 @@ STAGES = ['Slab PVC', 'Casting complete', 'Point hacking', 'Wire pulling', 'GI/P
 def points_for(uid):
     return [{'id': f'{uid}-p{i}', 'name': n, 'kind': k} for i, (n, k) in enumerate([('P-01 · Living room', 'power'), ('L-01 · Living room', 'light'), ('S-01 · Kitchen', 'socket'), ('SW-01 · Bedroom', 'switch')])]
 
+async def _seed_admin(db):
+    """Bootstrap admin login. Idempotent: never recreates once users exist."""
+    from auth import hash_password
+    if await db.users.count_documents({}) > 0:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    await db.users.insert_one({
+        'id': 'user-admin', 'email': 'admin@voltcraft.local',
+        'name': 'Site Admin', 'password_hash': hash_password('changeme123'),
+        'role': 'admin', 'worker_id': None, 'active': True,
+        'must_change_password': True, 'created_at': now, 'last_login_at': None,
+    })
+
+async def _seed_demo_worker(db):
+    """Demo worker login linked to the first active worker. Idempotent."""
+    from auth import hash_password
+    if await db.users.count_documents({'role': 'worker'}) > 0:
+        return
+    worker = await db.workers.find_one({'active': True}, sort=[('id', 1)])
+    if not worker:
+        return
+    # Login identifier: the worker's phone when set, else a fixed handle stored
+    # in the phone field so the identifier-based login lookup finds it.
+    phone = (worker.get('phone') or '').strip() or 'worker-demo'
+    now = datetime.now(timezone.utc).isoformat()
+    await db.users.insert_one({
+        'id': 'user-worker-demo', 'phone': phone,
+        'name': worker['name'], 'password_hash': hash_password('worker123'),
+        'role': 'worker', 'worker_id': worker['id'], 'active': True,
+        'must_change_password': False, 'created_at': now, 'last_login_at': None,
+    })
+
 async def initialize(db):
-    for coll in ['projects', 'blocks', 'units', 'workers', 'materials', 'expenses', 'inspections', 'tests', 'activity', 'movements', 'attendance']:
+    for coll in ['projects', 'blocks', 'units', 'workers', 'materials', 'expenses', 'inspections', 'tests', 'activity', 'movements', 'attendance', 'users']:
         await db[coll].create_index('id', unique=True)
     await db.units.create_index([('project_id', 1), ('block_id', 1), ('level', 1), ('number', 1)], unique=True)
     await db.attendance.create_index([('worker_id', 1), ('date', 1)], unique=True)
+    await db.users.create_index('email', unique=True, sparse=True)
+    await db.users.create_index('phone', unique=True, sparse=True)
+    await _seed_admin(db)
+    await _seed_demo_worker(db)
     if await db.projects.count_documents({}):
         return
     now = datetime.now(timezone.utc)
@@ -54,3 +90,5 @@ async def initialize(db):
     expenses = [('PVC conduit & fittings', 'materials', 12480, '35A'), ('September site wages', 'labour', 28400, ''), ('Cable delivery · Batch 04', 'materials', 18250, '35B'), ('Scissor lift rental', 'equipment', 3800, '36A'), ('Site transport', 'transport', 1450, ''), ('GI gang boxes · Supply', 'materials', 6200, '35C')]
     await db.expenses.insert_many([{'id': f'expense-{i+1}', 'project_id': 'rail-garden', 'description': n, 'category': c, 'amount': a, 'date': (now-timedelta(days=i)).date().isoformat(), 'block': b, 'reference': f'INV-2026-{104+i}', 'created_at': now.isoformat()} for i,(n,c,a,b) in enumerate(expenses)])
     await db.activity.insert_many([{'id': f'activity-{i}', 'project_id': 'rail-garden', 'kind': kind, 'message': msg, 'created_at': (now-timedelta(minutes=i*27+12)).isoformat()} for i,(kind,msg) in enumerate([('inspection','Blk 35A · RTO inspection records added'), ('stage','Blk 36A · Wire pulling progress updated'), ('material','Single gang box · Stock below minimum'), ('workforce','Daily attendance recorded for 12 workers')])])
+    # Fresh databases seed workers above; link the demo worker login now.
+    await _seed_demo_worker(db)

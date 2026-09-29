@@ -21,6 +21,32 @@ class Workspace(BaseModel):
     attendance: list[Record]
     movements: list[Record]
     activity: list[Record]
+    pagination: dict = {}
+
+class LoginIn(BaseModel):
+    identifier: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=1, max_length=72)
+
+class ChangePasswordIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=72)
+    new_password: str = Field(min_length=8, max_length=72)
+
+class UserCreateIn(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    email: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=30)
+    role: str = Field(default='viewer', max_length=20)
+    worker_id: str | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=72)
+
+class UserUpdateIn(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=100)
+    role: str | None = Field(default=None, max_length=20)
+    active: bool | None = None
+
+class AttendanceMeIn(BaseModel):
+    status: Literal['present', 'absent', 'leave']
+    hours: float = Field(default=8, ge=0, le=16)
 
 class ProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)

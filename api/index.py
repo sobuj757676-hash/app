@@ -27,6 +27,9 @@ DB_NAME = os.environ.get("DB_NAME", "voltcraft")
 if not MONGO_URL:
     raise RuntimeError("MONGO_URL environment variable is not set")
 
+# Fail fast if AUTH_SECRET is missing (checked at import).
+from auth import AUTH_SECRET  # noqa: E402,F401
+
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
@@ -48,11 +51,13 @@ app.add_middleware(
 
 from routes import router  # noqa: E402
 from operations import router as operations_router  # noqa: E402
+from auth_routes import router as auth_router  # noqa: E402
 
 # Vercel routes /api/* to api/index.py natively with the full original path,
 # so routes keep their /api prefix here.
 app.include_router(router, prefix="/api")
 app.include_router(operations_router, prefix="/api")
+app.include_router(auth_router)  # already prefixed with /api/auth
 
 
 @app.get("/api/health", include_in_schema=False)
