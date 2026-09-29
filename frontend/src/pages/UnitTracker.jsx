@@ -3,6 +3,7 @@ import {useSearchParams} from 'react-router-dom';
 import {Grid2X2,List,Search,ArrowUpRight,Check,Clock3,AlertTriangle,Building2} from 'lucide-react';
 import {useLanguage} from '../lib/i18n';
 import {useWorkspace} from '../lib/store';
+import {useAuth,canWrite} from '../lib/auth';
 import {label,status,percent} from '../lib/api';
 import {PageTitle,ExportButton,Action,StatusBadge,ProgressBar,Empty,FormModal} from '../components/Common';
 
@@ -10,6 +11,7 @@ const statuses=['completed','inProgress','pending','rework','notStarted'];
 export default function UnitTracker(){
  const {t}=useLanguage();
  const {data,setSelectedUnit,mutate}=useWorkspace();
+ const {user}=useAuth();const ro=!canWrite(user);
  const [params,setParams]=useSearchParams();
  const [block,setBlock]=useState(params.get('block')||(params.has('q')?'all':data.blocks[0]?.id||''));
  const [q,setQ]=useState(params.get('q')||'');
@@ -32,7 +34,7 @@ export default function UnitTracker(){
  const chooseBlock=id=>{setBlock(id);setLevel('all');setParams({block:id});};
  return <div className="page-enter">
   <PageTitle title={t('units')} subtitle={t('blockOverview')}>
-   <ExportButton/><Action id="add-unit" onClick={()=>setModal(true)} disabled={!chosen}>{t('addUnit')}</Action>
+   <ExportButton/>{!ro&&<Action id="add-unit" onClick={()=>setModal(true)} disabled={!chosen}>{t('addUnit')}</Action>}
   </PageTitle>
   <div className="block-tabs">
    <button data-testid="block-tab-all" className={allBlocks?'active':''} onClick={()=>chooseBlock('all')}><Building2 size={16}/>{t('allBlocks')}<span>{data.units.length}</span></button>
@@ -65,6 +67,6 @@ export default function UnitTracker(){
    </table></div>
   }
   <div className="table-footer" data-testid="unit-result-count">{filtered.length} / {blockUnits.length} {t('unitCount')}<span>{chosen?.sample_layout?t('sample'):t('recorded')}</span></div>
-  {modal&&chosen&&<FormModal open onClose={()=>setModal(false)} title={t('addUnit')} initial={{level:1,number:'',unit_type:'4-room',assigned_to:'',note:''}} fields={[{name:'level',label:t('level'),type:'number',min:1,max:chosen.levels},{name:'number',label:t('unit')},{name:'unit_type',label:t('unitType'),options:['2-room Flexi','3-room','4-room','5-room']},{name:'assigned_to',label:t('team'),required:false}]} onSubmit={v=>mutate('post',`/blocks/${chosen.id}/units`,v)}/>}
+  {modal&&chosen&&!ro&&<FormModal open onClose={()=>setModal(false)} title={t('addUnit')} initial={{level:1,number:'',unit_type:'4-room',assigned_to:'',note:''}} fields={[{name:'level',label:t('level'),type:'number',min:1,max:chosen.levels},{name:'number',label:t('unit')},{name:'unit_type',label:t('unitType'),options:['2-room Flexi','3-room','4-room','5-room']},{name:'assigned_to',label:t('team'),required:false}]} onSubmit={v=>mutate('post',`/blocks/${chosen.id}/units`,v)}/>}
  </div>;
 }

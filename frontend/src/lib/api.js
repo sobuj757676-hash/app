@@ -1,5 +1,16 @@
 import axios from 'axios';
 export const api = axios.create({ baseURL: `${process.env.REACT_APP_BACKEND_URL || ''}/api` });
+// Attach the session token to every request.
+api.interceptors.request.use(c=>{const t=localStorage.getItem('voltcraft-token');if(t)c.headers.Authorization=`Bearer ${t}`;return c;});
+// On 401 (missing/expired/invalid token) drop the session and go to login.
+// Skip the login request itself so it can surface "invalid credentials".
+api.interceptors.response.use(r=>r,e=>{
+ if(e.response?.status===401&&!String(e.config?.url||'').includes('/auth/login')){
+  localStorage.removeItem('voltcraft-token');
+  if(!window.location.pathname.startsWith('/login'))window.location.href='/login';
+ }
+ return Promise.reject(e);
+});
 export const today = () => new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Singapore',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export const money = n => new Intl.NumberFormat('en-SG', { style: 'currency', currency: 'SGD', maximumFractionDigits: 2, minimumFractionDigits: 0 }).format(n || 0);
 export const label = u => `#${String(u.level).padStart(2,'0')}-${u.number}`;
