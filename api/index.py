@@ -22,6 +22,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 load_dotenv(Path(__file__).parent / ".env")
 
+# Required production env vars (Vercel → voltcraft-api → Settings → Environment Variables):
+# MONGO_URL, DB_NAME=voltcraft, CORS_ORIGINS, AUTH_SECRET
 MONGO_URL = os.environ.get("MONGO_URL", "")
 DB_NAME = os.environ.get("DB_NAME", "voltcraft")
 if not MONGO_URL:
