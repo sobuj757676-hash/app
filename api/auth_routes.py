@@ -19,6 +19,10 @@ async def login(data: LoginIn):
     raw = data.identifier.strip()
     lookup = {'email': raw.lower()} if '@' in raw else {'phone': raw}
     user = await database().users.find_one({**lookup, 'active': True}, {'_id': 0})
+    # TEMP DEBUG (remove after diagnosis)
+    print(f"[auth] login attempt identifier={raw!r} lookup={lookup} user_found={user is not None}")
+    if user:
+        print(f"[auth] user id={user.get('id')} role={user.get('role')} active={user.get('active')} hash_len={len(user.get('password_hash') or '')} verify={verify_password(data.password, user.get('password_hash', ''))}")
     if not user or not verify_password(data.password, user.get('password_hash', '')):
         raise HTTPException(401, 'Invalid credentials')
     await database().users.update_one({'id': user['id']}, {'$set': {'last_login_at': now()}})
