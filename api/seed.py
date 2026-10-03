@@ -22,10 +22,6 @@ async def _seed_admin(db):
         }},
         upsert=True,
     )
-    # TEMP DEBUG (remove after diagnosis)
-    print(f"[seed] _seed_admin upsert: matched={res.matched_count} modified={res.modified_count} upserted_id={res.upserted_id}")
-    doc = await db.users.find_one({'id': 'user-admin'}, {'password_hash': 0})
-    print(f"[seed] admin doc now: {doc}")
 
 async def _seed_demo_worker(db):
     """Demo worker login linked to the first active worker. Upsert by id."""
