@@ -7,23 +7,25 @@ def points_for(uid):
     return [{'id': f'{uid}-p{i}', 'name': n, 'kind': k} for i, (n, k) in enumerate([('P-01 · Living room', 'power'), ('L-01 · Living room', 'light'), ('S-01 · Kitchen', 'socket'), ('SW-01 · Bedroom', 'switch')])]
 
 async def _seed_admin(db):
-    """Bootstrap admin login. Idempotent: never recreates once users exist."""
+    """Bootstrap admin login. Upsert by id: never overwrites an existing admin,
+    and never skipped just because other users exist (serverless instances can
+    otherwise race and leave the admin missing)."""
     from auth import hash_password
-    if await db.users.count_documents({}) > 0:
-        return
     now = datetime.now(timezone.utc).isoformat()
-    await db.users.insert_one({
-        'id': 'user-admin', 'email': 'admin@voltcraft.local',
-        'name': 'Site Admin', 'password_hash': hash_password('changeme123'),
-        'role': 'admin', 'worker_id': None, 'active': True,
-        'must_change_password': True, 'created_at': now, 'last_login_at': None,
-    })
+    await db.users.update_one(
+        {'id': 'user-admin'},
+        {'$setOnInsert': {
+            'id': 'user-admin', 'email': 'admin@voltcraft.local',
+            'name': 'Site Admin', 'password_hash': hash_password('changeme123'),
+            'role': 'admin', 'worker_id': None, 'active': True,
+            'must_change_password': True, 'created_at': now, 'last_login_at': None,
+        }},
+        upsert=True,
+    )
 
 async def _seed_demo_worker(db):
-    """Demo worker login linked to the first active worker. Idempotent."""
+    """Demo worker login linked to the first active worker. Upsert by id."""
     from auth import hash_password
-    if await db.users.count_documents({'role': 'worker'}) > 0:
-        return
     worker = await db.workers.find_one({'active': True}, sort=[('id', 1)])
     if not worker:
         return
@@ -31,12 +33,16 @@ async def _seed_demo_worker(db):
     # in the phone field so the identifier-based login lookup finds it.
     phone = (worker.get('phone') or '').strip() or 'worker-demo'
     now = datetime.now(timezone.utc).isoformat()
-    await db.users.insert_one({
-        'id': 'user-worker-demo', 'phone': phone,
-        'name': worker['name'], 'password_hash': hash_password('worker123'),
-        'role': 'worker', 'worker_id': worker['id'], 'active': True,
-        'must_change_password': False, 'created_at': now, 'last_login_at': None,
-    })
+    await db.users.update_one(
+        {'id': 'user-worker-demo'},
+        {'$setOnInsert': {
+            'id': 'user-worker-demo', 'phone': phone,
+            'name': worker['name'], 'password_hash': hash_password('worker123'),
+            'role': 'worker', 'worker_id': worker['id'], 'active': True,
+            'must_change_password': False, 'created_at': now, 'last_login_at': None,
+        }},
+        upsert=True,
+    )
 
 async def initialize(db):
     for coll in ['projects', 'blocks', 'units', 'workers', 'materials', 'expenses', 'inspections', 'tests', 'activity', 'movements', 'attendance', 'users']:
