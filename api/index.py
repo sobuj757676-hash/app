@@ -54,12 +54,20 @@ app.add_middleware(
 from routes import router  # noqa: E402
 from operations import router as operations_router  # noqa: E402
 from auth_routes import router as auth_router  # noqa: E402
+from defects import router as defects_router  # noqa: E402
+from tasks import router as tasks_router  # noqa: E402
+from photos import router as photos_router  # noqa: E402
+from notify import router as notify_router  # noqa: E402
 
 # Vercel routes /api/* to api/index.py natively with the full original path,
 # so routes keep their /api prefix here.
 app.include_router(router, prefix="/api")
 app.include_router(operations_router, prefix="/api")
 app.include_router(auth_router)  # already prefixed with /api/auth
+app.include_router(defects_router, prefix="/api")
+app.include_router(tasks_router, prefix="/api")
+app.include_router(photos_router, prefix="/api")
+app.include_router(notify_router, prefix="/api")
 
 
 @app.get("/api/health", include_in_schema=False)

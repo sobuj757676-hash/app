@@ -3,6 +3,18 @@ import random
 
 STAGES = ['Slab PVC', 'Casting complete', 'Point hacking', 'Wire pulling', 'GI/PVC & gang boxes', 'RTO approval', 'Plastering', 'Accessories fitting', 'Insulation testing']
 
+# Default RTO readiness checklist template. Stored per project as
+# `rto_checklist_template`; seeded onto any project missing it so older
+# projects (incl. the Rail Garden demo) get it automatically.
+DEFAULT_RTO_CHECKLIST = [
+    'All conduit points hacked / exposed',
+    'Wires pulled and labeled',
+    'Gang boxes installed where required',
+    'Work area cleaned and accessible',
+    'Relevant drawing revision available on site',
+    'Previous defects on this unit verified closed',
+]
+
 def points_for(uid):
     return [{'id': f'{uid}-p{i}', 'name': n, 'kind': k} for i, (n, k) in enumerate([('P-01 · Living room', 'power'), ('L-01 · Living room', 'light'), ('S-01 · Kitchen', 'socket'), ('SW-01 · Bedroom', 'switch')])]
 
@@ -45,19 +57,28 @@ async def _seed_demo_worker(db):
     )
 
 async def initialize(db):
-    for coll in ['projects', 'blocks', 'units', 'workers', 'materials', 'expenses', 'inspections', 'tests', 'activity', 'movements', 'attendance', 'users']:
+    for coll in ['projects', 'blocks', 'units', 'workers', 'materials', 'expenses', 'inspections', 'tests', 'activity', 'movements', 'attendance', 'users', 'defects', 'tasks', 'photos', 'notifications']:
         await db[coll].create_index('id', unique=True)
     await db.units.create_index([('project_id', 1), ('block_id', 1), ('level', 1), ('number', 1)], unique=True)
     await db.attendance.create_index([('worker_id', 1), ('date', 1)], unique=True)
     await db.users.create_index('email', unique=True, sparse=True)
     await db.users.create_index('phone', unique=True, sparse=True)
+    await db.defects.create_index([('project_id', 1), ('status', 1)])
+    await db.defects.create_index([('project_id', 1), ('assigned_to', 1)])
+    await db.tasks.create_index([('project_id', 1), ('assigned_to', 1), ('status', 1)])
+    await db.photos.create_index([('project_id', 1), ('entity_type', 1), ('entity_id', 1)])
+    await db.notifications.create_index([('user_id', 1), ('read', 1), ('created_at', -1)])
     await _seed_admin(db)
     await _seed_demo_worker(db)
+    # Backfill the RTO checklist template onto projects created before Phase 2.
+    await db.projects.update_many(
+        {'rto_checklist_template': {'$exists': False}},
+        {'$set': {'rto_checklist_template': DEFAULT_RTO_CHECKLIST}})
     if await db.projects.count_documents({}):
         return
     now = datetime.now(timezone.utc)
     today = now.astimezone(__import__('zoneinfo').ZoneInfo('Asia/Singapore')).date().isoformat()
-    project = {'id': 'rail-garden', 'name': 'Rail Garden', 'location': 'Choa Chu Kang, Singapore', 'company': 'VoltCraft Electrical', 'budget': 480000, 'target_date': (now + timedelta(days=180)).date().isoformat(), 'sample': True, 'created_at': now.isoformat()}
+    project = {'id': 'rail-garden', 'name': 'Rail Garden', 'location': 'Choa Chu Kang, Singapore', 'company': 'VoltCraft Electrical', 'budget': 480000, 'target_date': (now + timedelta(days=180)).date().isoformat(), 'rto_checklist_template': DEFAULT_RTO_CHECKLIST, 'sample': True, 'created_at': now.isoformat()}
     await db.projects.insert_one(project)
     rng = random.Random(46)
     units, blocks, inspections, tests = [], [], [], []

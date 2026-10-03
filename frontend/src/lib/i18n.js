@@ -26,7 +26,24 @@ changePassword:['Change password'],currentPassword:['Current password'],newPassw
 passwordMismatch:['New passwords do not match.'],passwordMin:['Password must be at least 8 characters.'],passwordChanged:['Password changed.'],
 mustChangePassword:['Set a new password'],mustChangePasswordSub:['Your account has a temporary password. Set a new one to continue.'],
 emailOrPhoneRequired:['Email or phone is required.'],linkedWorker:['Linked worker'],
-hello:['Hello'],today:['Today'],myAttendance:['My attendance'],markAttendance:['Mark attendance'],attendanceMarked:['Attendance recorded.'],siteToday:['Site today']
+hello:['Hello'],today:['Today'],myAttendance:['My attendance'],markAttendance:['Mark attendance'],attendanceMarked:['Attendance recorded.'],siteToday:['Site today'],
+defects:['Defects'],defectsSub:['Raise, assign and close out site defects.'],reportDefect:['Report defect'],defectDetail:['Defect detail'],
+tasks:['Tasks'],tasksSub:['Assign site work and track it to done.'],newTask:['New task'],myTasks:['My tasks'],myTasksSub:['Work assigned to you. Tap to update.'],
+openDefects:['Open defects'],criticalDefects:['Critical defects'],overdueTasks:['Overdue tasks'],dueSoon:['Due soon'],
+notificationsTitle:['Notifications'],noNotifications:['No notifications yet'],markRead:['Mark read'],
+photos:['Photos'],addPhoto:['Add photo'],takePhoto:['Take photo / upload'],uploading:['Uploading…'],photoCaption:['Caption (optional)'],
+assignee:['Assignee'],assign:['Assign'],assignTo:['Assign to'],reportedBy:['Reported by'],dueDate:['Due date'],
+open:['Open'],assigned:['Assigned'],in_progress:['In progress'],rectified:['Rectified'],verified:['Verified'],cancelled:['Cancelled'],
+todo:['To do'],done:['Done'],
+low:['Low'],medium:['Medium'],high:['High'],urgent:['Urgent'],
+critical:['Critical'],major:['Major'],minor:['Minor'],
+workmanship:['Workmanship'],safety:['Safety'],'design-drawing':['Design / drawing'],
+severity:['Severity'],priority:['Priority'],
+rtoChecklist:['RTO readiness checklist'],rtoChecklistSub:['Must be confirmed before an RTO inspection can be requested.'],checklistItem:['Checklist item'],addChecklistItem:['Add item'],checklistUpdated:['Checklist updated'],
+confirmAll:['Confirm every item to request'],requestedBy:['Requested by'],decidedBy:['Decided by'],decisionNote:['Decision note'],
+moveTo:['Move to'],defectHistory:['Status history'],completeChecklist:['Complete the checklist first'],
+photoStoragePending:['Photo storage is not configured yet.'],viewDefect:['View defect'],allSeverities:['All severities'],
+taskCompleted:['Task completed'],defectVerified:['Defect verified'],noTasks:['No tasks here yet'],noDefects:['No defects here yet']
 };
 const Context=createContext(null);
 export function LanguageProvider({children}) {const [lang,setLangState]=useState(()=>localStorage.getItem('voltcraft-language')||'en'); const setLang=l=>{setLangState(l);localStorage.setItem('voltcraft-language',l);document.documentElement.lang=l;};const index={en:0,bn:1,zh:2}[lang]??0;return <Context.Provider value={{lang,setLang,t:key=>words[key]?.[index]||words[key]?.[0]||key}}>{children}</Context.Provider>;}

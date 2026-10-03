@@ -1,5 +1,5 @@
 from pydantic import BaseModel as PydanticBaseModel, Field, ConfigDict
-from typing import Literal
+from typing import Literal, Annotated
 from datetime import date
 
 class BaseModel(PydanticBaseModel):
@@ -20,6 +20,8 @@ class Workspace(BaseModel):
     tests: list[Record]
     attendance: list[Record]
     movements: list[Record]
+    defects: list[Record] = []
+    tasks: list[Record] = []
     activity: list[Record]
     pagination: dict = {}
 
@@ -54,6 +56,7 @@ class ProjectIn(BaseModel):
     company: str = Field(default='VoltCraft Electrical', max_length=100)
     budget: float = Field(default=500000, ge=0, allow_inf_nan=False)
     target_date: date
+    rto_checklist_template: list[Annotated[str, Field(min_length=1, max_length=200)]] | None = Field(default=None, max_length=30)
 
 class BlockIn(BaseModel):
     name: str = Field(min_length=1, max_length=16, pattern=r'^[A-Za-z0-9 -]+$')
@@ -72,10 +75,15 @@ class AdvanceIn(BaseModel):
     note: str = Field(default='', max_length=2000)
     expected_stage: int = Field(ge=0, le=8)
 
+class ChecklistItemIn(BaseModel):
+    item: str = Field(min_length=1, max_length=200)
+    checked: bool
+
 class InspectionIn(BaseModel):
     inspector: str = Field(min_length=2, max_length=100)
     date: date
     note: str = Field(default='', max_length=2000)
+    checklist: list[ChecklistItemIn] | None = None
 
 class DecisionIn(BaseModel):
     result: Literal['approved', 'rework']
@@ -128,3 +136,56 @@ class ExpenseIn(BaseModel):
     date: date
     block: str = Field(default='', max_length=16)
     reference: str = Field(default='', max_length=100)
+
+# ---------- Phase 2: defects, tasks, photos, RTO checklist ----------
+
+DEFECT_CATEGORIES = ('workmanship', 'material', 'design-drawing', 'safety', 'other')
+DEFECT_SEVERITIES = ('critical', 'major', 'minor')
+DEFECT_STATUSES = ('open', 'assigned', 'in_progress', 'rectified', 'verified', 'cancelled')
+TASK_STATUSES = ('todo', 'in_progress', 'done', 'cancelled')
+TASK_PRIORITIES = ('low', 'medium', 'high', 'urgent')
+PHOTO_ENTITY_TYPES = ('defect', 'inspection', 'test', 'unit', 'task')
+
+class DefectIn(BaseModel):
+    title: str = Field(min_length=2, max_length=150)
+    description: str = Field(default='', max_length=2000)
+    category: Literal['workmanship', 'material', 'design-drawing', 'safety', 'other'] = 'workmanship'
+    severity: Literal['critical', 'major', 'minor'] = 'major'
+    unit_id: str | None = None
+    due_date: date | None = None
+
+class DefectPatchIn(BaseModel):
+    title: str | None = Field(default=None, min_length=2, max_length=150)
+    description: str | None = Field(default=None, max_length=2000)
+    category: Literal['workmanship', 'material', 'design-drawing', 'safety', 'other'] | None = None
+    severity: Literal['critical', 'major', 'minor'] | None = None
+    due_date: date | None = None
+
+class DefectAssignIn(BaseModel):
+    assignee_id: str = Field(min_length=1)
+
+class DefectTransitionIn(BaseModel):
+    status: Literal['open', 'assigned', 'in_progress', 'rectified', 'verified', 'cancelled']
+    note: str = Field(default='', max_length=1000)
+
+class TaskIn(BaseModel):
+    title: str = Field(min_length=2, max_length=150)
+    description: str = Field(default='', max_length=2000)
+    unit_id: str | None = None
+    assigned_to: str = Field(min_length=1)
+    priority: Literal['low', 'medium', 'high', 'urgent'] = 'medium'
+    due_date: date | None = None
+
+class TaskPatchIn(BaseModel):
+    title: str | None = Field(default=None, min_length=2, max_length=150)
+    description: str | None = Field(default=None, max_length=2000)
+    priority: Literal['low', 'medium', 'high', 'urgent'] | None = None
+    due_date: date | None = None
+    assigned_to: str | None = Field(default=None, min_length=1)
+
+class TaskTransitionIn(BaseModel):
+    status: Literal['todo', 'in_progress', 'done', 'cancelled']
+    note: str = Field(default='', max_length=1000)
+
+class RtoChecklistIn(BaseModel):
+    template: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(min_length=1, max_length=30)

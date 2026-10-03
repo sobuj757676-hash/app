@@ -5,8 +5,8 @@ import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import Response
-from models import Record, Workspace, ProjectIn, BlockIn, UnitIn, AdvanceIn, InspectionIn, DecisionIn, PointIn, TestIn
-from seed import STAGES, points_for
+from models import Record, Workspace, ProjectIn, BlockIn, UnitIn, AdvanceIn, InspectionIn, DecisionIn, PointIn, TestIn, RtoChecklistIn
+from seed import STAGES, points_for, DEFAULT_RTO_CHECKLIST
 from auth import get_current_user, require_roles, OPS_ROLES, DECIDE_ROLES, MONEY_ROLES
 
 router = APIRouter()
@@ -65,17 +65,45 @@ async def projects(user: dict = Depends(get_current_user)):
 
 @router.post('/projects', response_model=Record)
 async def create_project(data: ProjectIn, user: dict = Depends(require_roles(*MONEY_ROLES))):
-    doc = await save('projects', {'id': uid(), **data.model_dump(mode='json'), 'sample': False, 'created_at': now()})
+    payload = data.model_dump(mode='json')
+    if not payload.get('rto_checklist_template'):
+        payload['rto_checklist_template'] = DEFAULT_RTO_CHECKLIST
+    doc = await save('projects', {'id': uid(), **payload, 'sample': False, 'created_at': now()})
     await log(doc['id'], 'project', f'Project created · {data.name}', user)
     return doc
 
 @router.patch('/projects/{id}', response_model=Record)
 async def edit_project(id: str, data: ProjectIn, user: dict = Depends(require_roles(*MONEY_ROLES))):
     before = await get('projects', id)
-    await database().projects.update_one({'id': id}, {'$set': data.model_dump(mode='json')})
+    patch = data.model_dump(mode='json', exclude_unset=True)
+    if patch.get('rto_checklist_template') is not None:
+        patch['rto_checklist_template'] = [s.strip() for s in patch['rto_checklist_template'] if s.strip()][:30]
+        if not patch['rto_checklist_template']:
+            raise HTTPException(400, 'Checklist template needs at least one item')
+    await database().projects.update_one({'id': id}, {'$set': patch})
     after = await get('projects', id)
     await log_change(id, 'project', f'Project updated · {after["name"]}', user, before, after)
     return after
+
+@router.get('/projects/{pid}/settings/rto-checklist')
+async def get_rto_checklist(pid: str, user: dict = Depends(get_current_user)):
+    project = await get('projects', pid)
+    return {'template': project.get('rto_checklist_template') or DEFAULT_RTO_CHECKLIST}
+
+@router.put('/projects/{pid}/settings/rto-checklist')
+async def set_rto_checklist(pid: str, data: RtoChecklistIn,
+                            user: dict = Depends(require_roles('admin', 'manager'))):
+    await get('projects', pid)
+    items = [s.strip() for s in data.template if s.strip()]
+    if not items:
+        raise HTTPException(400, 'Checklist template needs at least one item')
+    if len(set(items)) != len(items):
+        raise HTTPException(400, 'Checklist items must be unique')
+    before = await get('projects', pid)
+    await database().projects.update_one({'id': pid}, {'$set': {'rto_checklist_template': items[:30]}})
+    after = await get('projects', pid)
+    await log_change(pid, 'project', 'RTO readiness checklist updated', user, before, after)
+    return {'template': items[:30]}
 
 PAGINATED = ('units', 'attendance', 'movements')
 
@@ -88,7 +116,7 @@ async def workspace(pid: str, user: dict = Depends(get_current_user),
         project.pop('budget', None)
     result = {'project': project}
     pagination = {}
-    for coll in ['blocks', 'units', 'workers', 'materials', 'expenses', 'inspections', 'tests', 'attendance', 'movements']:
+    for coll in ['blocks', 'units', 'workers', 'materials', 'expenses', 'inspections', 'tests', 'defects', 'tasks', 'attendance', 'movements']:
         filt = {'project_id': pid}
         if coll == 'expenses':
             filt['deleted'] = {'$ne': True}
@@ -109,6 +137,11 @@ async def workspace(pid: str, user: dict = Depends(get_current_user),
             if w.get('id') != user.get('worker_id'):
                 w.pop('daily_rate', None)
                 w.pop('phone', None)
+        # Workers see only defects they reported or are assigned to, and their own tasks.
+        result['defects'] = [d for d in result['defects']
+                             if d.get('assigned_to') == user['id']
+                             or d.get('reported_by', {}).get('id') == user['id']]
+        result['tasks'] = [t for t in result['tasks'] if t.get('assigned_to') == user['id']]
     result['activity'] = await database().activity.find({'project_id': pid}, {'_id': 0}).sort('created_at', -1).limit(20).to_list(20)
     result['pagination'] = pagination
     return result
@@ -174,6 +207,11 @@ async def advance(id: str, data: AdvanceIn, user: dict = Depends(require_roles(*
     if stage != data.expected_stage: raise HTTPException(409, 'Unit changed. Refresh and retry.')
     if stage >= 9: raise HTTPException(400, 'Unit already complete')
     if stage == 5: raise HTTPException(400, 'RTO approval required before plastering')
+    # Phase 2: a critical defect blocks any stage advancement until verified/cancelled.
+    blocker = await database().defects.find_one(
+        {'unit_id': id, 'severity': 'critical', 'status': {'$nin': ['verified', 'cancelled']}},
+        {'_id': 0, 'title': 1})
+    if blocker: raise HTTPException(400, f"Blocked by critical defect: {blocker['title']}")
     if stage == 8:
         tests = await database().tests.find({'unit_id': id}, {'_id': 0}).sort('created_at', 1).to_list(10000)
         latest = {t['point_id']: t for t in tests}
@@ -186,9 +224,23 @@ async def advance(id: str, data: AdvanceIn, user: dict = Depends(require_roles(*
 @router.post('/units/{id}/inspections', response_model=Record)
 async def request_inspection(id: str, data: InspectionIn, user: dict = Depends(require_roles(*OPS_ROLES))):
     unit = await get('units', id)
+    # Validate the readiness checklist BEFORE touching the unit, so a rejected
+    # request never leaves the unit in a half-updated state.
+    project = await get('projects', unit['project_id'])
+    template = project.get('rto_checklist_template') or DEFAULT_RTO_CHECKLIST
+    if not data.checklist:
+        raise HTTPException(400, 'RTO readiness checklist is required — confirm every item before requesting')
+    submitted = [c.item for c in data.checklist]
+    if submitted != template:
+        raise HTTPException(400, 'Readiness checklist does not match the project template')
+    if not all(c.checked for c in data.checklist):
+        raise HTTPException(400, 'All readiness checklist items must be confirmed')
     result = await database().units.update_one({'id': id, 'stage': 5, 'rto': {'$in': ['none', 'rework']}}, {'$set': {'rto': 'pending', 'sample': False, 'updated_at': now()}})
     if not result.modified_count: raise HTTPException(400, 'Complete installation first; only one pending inspection is allowed')
-    doc = {'id': uid(), 'project_id': unit['project_id'], 'unit_id': id, 'block': unit['block'], 'unit_label': f'#{unit["level"]:02}-{unit["number"]}', **data.model_dump(mode='json'), 'status': 'pending', 'created_at': now()}
+    checklist = [{'item': c.item, 'checked': True,
+                  'checked_by': {'id': user['id'], 'name': user['name']},
+                  'checked_at': now()} for c in data.checklist]
+    doc = {'id': uid(), 'project_id': unit['project_id'], 'unit_id': id, 'block': unit['block'], 'unit_label': f'#{unit["level"]:02}-{unit["number"]}', **data.model_dump(mode='json', exclude={'checklist'}), 'checklist': checklist, 'requested_by': {'id': user['id'], 'name': user['name']}, 'decided_by': None, 'decided_at': None, 'status': 'pending', 'created_at': now()}
     await log(unit['project_id'], 'inspection', f'Blk {unit["block"]} · {doc["unit_label"]} · RTO inspection requested', user)
     return await save('inspections', doc)
 
@@ -199,8 +251,15 @@ async def decide(id: str, data: DecisionIn, user: dict = Depends(require_roles(*
     unit = await get('units', inspection['unit_id'])
     changed = await database().units.update_one({'id': unit['id'], 'stage': 5, 'rto': 'pending'}, {'$set': {'stage': 6 if data.result == 'approved' else 5, 'rto': data.result, 'sample': False, 'updated_at': now()}, '$push': {'history': {'stage': 5, 'note': data.note, 'inspector': data.inspector, 'result': data.result, 'at': now()}}})
     if not changed.modified_count: raise HTTPException(409, 'Unit is not awaiting this inspection')
-    await database().inspections.update_one({'id': id}, {'$set': {'status': data.result, 'inspector': data.inspector, 'note': data.note, 'decided_at': now()}})
+    await database().inspections.update_one({'id': id}, {'$set': {'status': data.result, 'inspector': data.inspector, 'note': data.note, 'decided_by': {'id': user['id'], 'name': user['name']}, 'decided_at': now()}})
     await log(unit['project_id'], 'inspection', f'Blk {unit["block"]} · {inspection["unit_label"]} · RTO {data.result}', user)
+    requester_id = (inspection.get('requested_by') or {}).get('id')
+    if requester_id and requester_id != user['id']:
+        from notify import notify
+        await notify(requester_id, 'rto_decided',
+                     f'RTO {data.result}: Blk {unit["block"]} · {inspection["unit_label"]}',
+                     f'Decided by {user["name"]}' + (f' · {data.note[:200]}' if data.note else ''),
+                     {'page': 'inspections', 'id': id})
     return await get('inspections', id)
 
 @router.post('/units/{id}/points', response_model=Record)

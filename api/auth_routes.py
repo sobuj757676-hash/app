@@ -5,7 +5,7 @@ from pymongo.errors import DuplicateKeyError
 from models import LoginIn, ChangePasswordIn, UserCreateIn, UserUpdateIn
 from routes import database, get, uid, now
 from auth import (get_current_user, require_roles, hash_password, verify_password,
-                  create_token, public_user, ROLES)
+                  create_token, public_user, ROLES, OPS_ROLES)
 
 router = APIRouter(prefix="/api/auth")
 
@@ -86,6 +86,13 @@ async def create_user(data: UserCreateIn, user: dict = Depends(require_roles('ad
 async def list_users(user: dict = Depends(require_roles('admin', 'manager'))):
     filt = {'role': 'worker'} if user['role'] == 'manager' else {}
     return await database().users.find(filt, {'_id': 0, 'password_hash': 0}).sort('created_at', -1).to_list(1000)
+
+
+@router.get('/directory')
+async def directory(user: dict = Depends(require_roles(*OPS_ROLES))):
+    """Minimal active-user directory for assignee pickers (no sensitive fields)."""
+    return await database().users.find(
+        {'active': True}, {'_id': 0, 'id': 1, 'name': 1, 'role': 1}).sort('name', 1).to_list(1000)
 
 
 @router.patch('/users/{id}')

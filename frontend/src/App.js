@@ -9,6 +9,8 @@ import Overview from './pages/Overview';
 import WorkerHome from './pages/WorkerHome';
 import UnitTracker from './pages/UnitTracker';
 import Inspections from './pages/Inspections';
+import Defects from './pages/Defects';
+import Tasks from './pages/Tasks';
 import Testing from './pages/Testing';
 import Workforce from './pages/Workforce';
 import Materials from './pages/Materials';
@@ -27,7 +29,7 @@ function RequireAuth({children}){
  if(!user)return <Navigate to="/login" replace/>;
  if(user.must_change_password)return <div className="login-page"><ForceChangePassword onDone={()=>window.location.reload()}/></div>;
  const {role}=user,path=loc.pathname;
- if(role==='worker'&&path!=='/'&&path!=='/units')return <Navigate to="/" replace/>;
+ if(role==='worker'&&!['/','/units','/defects','/tasks'].includes(path))return <Navigate to="/" replace/>;
  if(path==='/users'&&!['admin','manager'].includes(role))return <Navigate to="/" replace/>;
  if(path==='/expenses'&&role==='supervisor')return <Navigate to="/" replace/>;
  if(path==='/settings'&&role==='worker')return <Navigate to="/" replace/>;
@@ -45,6 +47,8 @@ function Shell(){
    <Route path="/projects" element={<Projects/>}/>
    <Route path="/units" element={<UnitTracker/>}/>
    <Route path="/inspections" element={<Inspections/>}/>
+   <Route path="/defects" element={<Defects/>}/>
+   <Route path="/tasks" element={<Tasks/>}/>
    <Route path="/testing" element={<Testing/>}/>
    <Route path="/workforce" element={<Workforce/>}/>
    <Route path="/materials" element={<Materials/>}/>
