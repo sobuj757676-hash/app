@@ -1,1 +1,1 @@
-{"buildCommand":"yarn --cwd frontend build","installCommand":"yarn --cwd frontend install --frozen-lockfile","outputDirectory":"frontend/build","rewrites":[{"destination":"/index.html","source":"/((?!api).*)"}]}
+{"buildCommand":"yarn --cwd frontend build","installCommand":"pip install -r requirements.txt && yarn --cwd frontend install --frozen-lockfile","outputDirectory":"frontend/build","rewrites":[{"destination":"/index.html","source":"/((?!api).*)"}]}
