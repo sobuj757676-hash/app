@@ -97,3 +97,17 @@
 .worker-task-actions{display:flex;gap:8px;margin-top:10px}
 .attend-submit.small{width:auto;min-height:44px;padding:0 18px;font-size:14px}
 @media(max-width:760px){.task-board{grid-template-columns:1fr}.defect-meta{grid-template-columns:1fr}}
+
+/* ---------- Room mix builder + point templates ---------- */
+.stepper{display:inline-flex;align-items:center;gap:10px}
+.stepper-value{min-width:28px;text-align:center;font-weight:700;font-size:15px}
+.mix-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--page);border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
+.mix-label{font-size:14px;font-weight:600}
+.mix-total{display:flex;align-items:center;gap:8px;justify-content:flex-end;margin:12px 0 4px;font-size:14px;color:var(--muted-text)}
+.mix-total strong{font-size:18px;color:var(--text)}
+.tpl-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.tpl-tabs button{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:var(--page);color:var(--text);font-size:13px;cursor:pointer}
+.tpl-tabs button.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.tpl-row{display:flex;align-items:center;gap:8px;background:var(--page);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px}
+.tpl-row input[type=text]{flex:1;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px}
+.tpl-row select{padding:9px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px}

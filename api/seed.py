@@ -18,6 +18,92 @@ DEFAULT_RTO_CHECKLIST = [
 def points_for(uid):
     return [{'id': f'{uid}-p{i}', 'name': n, 'kind': k} for i, (n, k) in enumerate([('P-01 · Living room', 'power'), ('L-01 · Living room', 'light'), ('S-01 · Kitchen', 'socket'), ('SW-01 · Bedroom', 'switch')])]
 
+# Room mix + point templates (Phase: room mix builder).
+# Templates live per project as `point_templates: {room_type: [{room, kind, count}]}`;
+# seeded onto any project missing them (same pattern as the RTO checklist).
+ROOM_TYPES = ['2-room', '3-room', '4-room', '5-room', 'executive']
+POINT_KINDS = ['power', 'light', 'socket', 'switch', 'aircon', 'heater', 'fan', 'data']
+KIND_PREFIX = {'power': 'P', 'light': 'L', 'socket': 'S', 'switch': 'SW',
+               'aircon': 'AC', 'heater': 'H', 'fan': 'F', 'data': 'D'}
+
+def _mk(rows):
+    """rows: list of (room, kind, count) -> template row dicts."""
+    return [{'room': r, 'kind': k, 'count': c} for r, k, c in rows]
+
+def _rep(label, n, kinds):
+    """Repeat (kind, count) pairs across n numbered rooms."""
+    out = []
+    for i in range(1, n + 1):
+        for kind, count in kinds:
+            out.append((f'{label} {i}', kind, count))
+    return out
+
+DEFAULT_POINT_TEMPLATES = {
+    '2-room': _mk([
+        ('Living/Bedroom', 'power', 4), ('Living/Bedroom', 'light', 2), ('Living/Bedroom', 'switch', 2),
+        ('Bedroom', 'power', 3), ('Bedroom', 'light', 1), ('Bedroom', 'switch', 1),
+        ('Kitchen', 'power', 3), ('Kitchen', 'light', 1), ('Kitchen', 'socket', 1),
+        ('Bathroom', 'light', 1), ('Bathroom', 'switch', 1), ('Bathroom', 'heater', 1),
+    ]),
+    '3-room': _mk([
+        ('Living', 'power', 5), ('Living', 'light', 2), ('Living', 'switch', 2), ('Living', 'fan', 1),
+        *_rep('Bedroom', 2, [('power', 4), ('light', 1), ('switch', 1)]),
+        ('Kitchen', 'power', 4), ('Kitchen', 'light', 1), ('Kitchen', 'socket', 2),
+        *_rep('Bathroom', 2, [('light', 1), ('switch', 1), ('heater', 1)]),
+        ('Yard', 'power', 1), ('Yard', 'light', 1),
+    ]),
+    '4-room': _mk([
+        ('Living', 'power', 6), ('Living', 'light', 2), ('Living', 'switch', 2), ('Living', 'fan', 1), ('Living', 'data', 1),
+        *_rep('Bedroom', 3, [('power', 4), ('light', 1), ('switch', 1), ('fan', 1)]),
+        ('Kitchen', 'power', 4), ('Kitchen', 'light', 1), ('Kitchen', 'socket', 2), ('Kitchen', 'switch', 1),
+        *_rep('Bathroom', 2, [('light', 1), ('switch', 1), ('heater', 1)]),
+        ('Yard', 'power', 1), ('Yard', 'light', 1),
+    ]),
+    '5-room': _mk([
+        ('Living', 'power', 8), ('Living', 'light', 3), ('Living', 'switch', 3), ('Living', 'fan', 1), ('Living', 'data', 2),
+        *_rep('Bedroom', 3, [('power', 4), ('light', 1), ('switch', 1), ('fan', 1), ('aircon', 1)]),
+        ('Kitchen', 'power', 5), ('Kitchen', 'light', 2), ('Kitchen', 'socket', 2), ('Kitchen', 'switch', 1),
+        *_rep('Bathroom', 2, [('light', 1), ('switch', 1), ('heater', 1)]),
+        ('Yard', 'power', 2), ('Yard', 'light', 1),
+    ]),
+    'executive': _mk([
+        ('Living', 'power', 8), ('Living', 'light', 3), ('Living', 'switch', 3), ('Living', 'fan', 1), ('Living', 'data', 2),
+        *_rep('Bedroom', 4, [('power', 4), ('light', 1), ('switch', 1), ('fan', 1), ('aircon', 1)]),
+        ('Kitchen', 'power', 5), ('Kitchen', 'light', 2), ('Kitchen', 'socket', 2), ('Kitchen', 'switch', 1),
+        *_rep('Bathroom', 3, [('light', 1), ('switch', 1), ('heater', 1)]),
+        ('Yard', 'power', 2), ('Yard', 'light', 1),
+    ]),
+}
+
+GENERIC_TEMPLATE = _mk([('Living', 'power', 2), ('Living', 'light', 1), ('Living', 'switch', 1)])
+
+def points_for_template(room_type, unit_id, templates):
+    """Expand a room type's point template into unit points.
+
+    Point name format: {PREFIX}-{nn} · {room}, numbering per kind across the
+    unit; point id {unit_id}-p{i}. Falls back to a small generic template when
+    the room type has no template. Never touches existing units — callers use
+    this only when creating new units.
+    """
+    rows = (templates or {}).get(room_type) or GENERIC_TEMPLATE
+    counters, points, i = {}, [], 0
+    for row in rows:
+        kind = (row.get('kind') or '').strip()
+        if kind not in KIND_PREFIX:
+            continue
+        try:
+            count = int(row.get('count', 0))
+        except (TypeError, ValueError):
+            continue
+        room = str(row.get('room') or 'General').strip()[:40] or 'General'
+        for _ in range(max(0, min(count, 50))):
+            counters[kind] = counters.get(kind, 0) + 1
+            points.append({'id': f'{unit_id}-p{i}',
+                           'name': f"{KIND_PREFIX[kind]}-{counters[kind]:02d} · {room}",
+                           'kind': kind})
+            i += 1
+    return points
+
 async def _seed_admin(db):
     """Bootstrap admin login. Upsert by id: never overwrites an existing admin,
     and never skipped just because other users exist (serverless instances can
@@ -74,11 +160,15 @@ async def initialize(db):
     await db.projects.update_many(
         {'rto_checklist_template': {'$exists': False}},
         {'$set': {'rto_checklist_template': DEFAULT_RTO_CHECKLIST}})
+    # Backfill point templates onto projects created before the room-mix feature.
+    await db.projects.update_many(
+        {'point_templates': {'$exists': False}},
+        {'$set': {'point_templates': DEFAULT_POINT_TEMPLATES}})
     if await db.projects.count_documents({}):
         return
     now = datetime.now(timezone.utc)
     today = now.astimezone(__import__('zoneinfo').ZoneInfo('Asia/Singapore')).date().isoformat()
-    project = {'id': 'rail-garden', 'name': 'Rail Garden', 'location': 'Choa Chu Kang, Singapore', 'company': 'VoltCraft Electrical', 'budget': 480000, 'target_date': (now + timedelta(days=180)).date().isoformat(), 'rto_checklist_template': DEFAULT_RTO_CHECKLIST, 'sample': True, 'created_at': now.isoformat()}
+    project = {'id': 'rail-garden', 'name': 'Rail Garden', 'location': 'Choa Chu Kang, Singapore', 'company': 'VoltCraft Electrical', 'budget': 480000, 'target_date': (now + timedelta(days=180)).date().isoformat(), 'rto_checklist_template': DEFAULT_RTO_CHECKLIST, 'point_templates': DEFAULT_POINT_TEMPLATES, 'sample': True, 'created_at': now.isoformat()}
     await db.projects.insert_one(project)
     rng = random.Random(46)
     units, blocks, inspections, tests = [], [], [], []

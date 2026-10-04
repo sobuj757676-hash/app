@@ -5,8 +5,8 @@ import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import Response
-from models import Record, Workspace, ProjectIn, BlockIn, UnitIn, AdvanceIn, InspectionIn, DecisionIn, PointIn, TestIn, RtoChecklistIn
-from seed import STAGES, points_for, DEFAULT_RTO_CHECKLIST
+from models import Record, Workspace, ProjectIn, BlockIn, UnitIn, AdvanceIn, InspectionIn, DecisionIn, PointIn, TestIn, RtoChecklistIn, PointTemplatesIn
+from seed import STAGES, points_for, DEFAULT_RTO_CHECKLIST, DEFAULT_POINT_TEMPLATES, points_for_template, ROOM_TYPES, POINT_KINDS
 from auth import get_current_user, require_roles, OPS_ROLES, DECIDE_ROLES, MONEY_ROLES
 
 router = APIRouter()
@@ -68,6 +68,8 @@ async def create_project(data: ProjectIn, user: dict = Depends(require_roles(*MO
     payload = data.model_dump(mode='json')
     if not payload.get('rto_checklist_template'):
         payload['rto_checklist_template'] = DEFAULT_RTO_CHECKLIST
+    if not payload.get('point_templates'):
+        payload['point_templates'] = DEFAULT_POINT_TEMPLATES
     doc = await save('projects', {'id': uid(), **payload, 'sample': False, 'created_at': now()})
     await log(doc['id'], 'project', f'Project created · {data.name}', user)
     return doc
@@ -104,6 +106,43 @@ async def set_rto_checklist(pid: str, data: RtoChecklistIn,
     after = await get('projects', pid)
     await log_change(pid, 'project', 'RTO readiness checklist updated', user, before, after)
     return {'template': items[:30]}
+
+@router.get('/projects/{pid}/settings/point-templates')
+async def get_point_templates(pid: str, user: dict = Depends(get_current_user)):
+    project = await get('projects', pid)
+    return {'templates': project.get('point_templates') or DEFAULT_POINT_TEMPLATES}
+
+@router.put('/projects/{pid}/settings/point-templates')
+async def set_point_templates(pid: str, data: PointTemplatesIn,
+                              user: dict = Depends(require_roles('admin', 'manager'))):
+    await get('projects', pid)
+    incoming = data.templates or {}
+    for rt in incoming:
+        if rt not in ROOM_TYPES:
+            raise HTTPException(400, f'Unknown room type: {rt}')
+    clean = {}
+    for rt, rows in incoming.items():
+        clean_rows = []
+        for row in rows or []:
+            room = (row.room or '').strip()
+            if not room:
+                raise HTTPException(400, f'Template row needs a room label ({rt})')
+            if row.kind not in POINT_KINDS:
+                raise HTTPException(400, f'Unknown point kind: {row.kind}')
+            if not isinstance(row.count, int) or not 1 <= row.count <= 50:
+                raise HTTPException(400, f'Template count must be 1–50 ({rt} · {room})')
+            clean_rows.append({'room': room[:40], 'kind': row.kind, 'count': row.count})
+        clean[rt] = clean_rows
+    before = await get('projects', pid)
+    # Merge over existing so a partial update can't wipe a room type's template.
+    # Editing a template only affects units created afterwards — existing units
+    # keep the points they were generated with.
+    merged = dict(before.get('point_templates') or DEFAULT_POINT_TEMPLATES)
+    merged.update(clean)
+    await database().projects.update_one({'id': pid}, {'$set': {'point_templates': merged}})
+    after = await get('projects', pid)
+    await log_change(pid, 'project', 'Point templates updated', user, before, after)
+    return {'templates': merged}
 
 PAGINATED = ('units', 'attendance', 'movements')
 
@@ -151,16 +190,44 @@ async def workspace(pid: str, user: dict = Depends(get_current_user),
 
 @router.post('/projects/{pid}/blocks', response_model=Record)
 async def create_block(pid: str, data: BlockIn, user: dict = Depends(require_roles(*MONEY_ROLES))):
-    await get('projects', pid)
+    project = await get('projects', pid)
     name = data.name.strip().upper()
     if await database().blocks.find_one({'project_id': pid, 'name': name}): raise HTTPException(409, 'Block already exists')
-    block = {'id': uid(), 'project_id': pid, 'name': name, 'levels': data.levels, 'planned_units': data.levels * data.units_per_level, 'sample_layout': False}
+    # Room mix: an explicit mix wins and units_per_level is derived from it.
+    # Legacy clients send only units_per_level -> treated as all 4-room.
+    if data.room_mix is not None:
+        if not data.room_mix:
+            raise HTTPException(400, 'Room mix needs at least one entry')
+        mix, seen = [], set()
+        for entry in data.room_mix:
+            rt = (entry.room_type or '').strip()
+            if rt not in ROOM_TYPES:
+                raise HTTPException(400, f'Unknown room type: {rt or entry.room_type}')
+            if rt in seen:
+                raise HTTPException(400, f'Duplicate room type in mix: {rt}')
+            seen.add(rt)
+            if not isinstance(entry.count, int) or entry.count < 1:
+                raise HTTPException(400, f'Room count must be at least 1 ({rt})')
+            mix.append({'room_type': rt, 'count': entry.count})
+        units_per_level = sum(m['count'] for m in mix)
+        if units_per_level > 30:
+            raise HTTPException(400, 'Total units per level must be 30 or fewer')
+    elif data.units_per_level:
+        mix = [{'room_type': '4-room', 'count': data.units_per_level}]
+        units_per_level = data.units_per_level
+    else:
+        raise HTTPException(400, 'Provide room_mix or units_per_level')
+    templates = project.get('point_templates') or DEFAULT_POINT_TEMPLATES
+    block = {'id': uid(), 'project_id': pid, 'name': name, 'levels': data.levels, 'planned_units': data.levels * units_per_level, 'room_mix': mix, 'sample_layout': False}
     await save('blocks', block)
     units = []
     for level in range(1, data.levels + 1):
-        for n in range(data.units_per_level):
-            id = uid()
-            units.append({'id': id, 'project_id': pid, 'block_id': block['id'], 'block': name, 'level': level, 'number': str(data.first_unit+n), 'unit_type': '4-room', 'assigned_to': '', 'note': '', 'stage': 0, 'rto': 'none', 'points': points_for(id), 'history': [], 'updated_at': now(), 'sample': False})
+        n = 0
+        for entry in mix:
+            for _ in range(entry['count']):
+                id = uid()
+                units.append({'id': id, 'project_id': pid, 'block_id': block['id'], 'block': name, 'level': level, 'number': str(data.first_unit+n), 'unit_type': entry['room_type'], 'assigned_to': '', 'note': '', 'stage': 0, 'rto': 'none', 'points': points_for_template(entry['room_type'], id, templates), 'history': [], 'updated_at': now(), 'sample': False})
+                n += 1
     await database().units.insert_many(units)
     await log(pid, 'project', f'Blk {name} · {len(units)} units added', user)
     return block

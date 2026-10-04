@@ -58,11 +58,16 @@ class ProjectIn(BaseModel):
     target_date: date
     rto_checklist_template: list[Annotated[str, Field(min_length=1, max_length=200)]] | None = Field(default=None, max_length=30)
 
+class RoomMixIn(BaseModel):
+    room_type: str = ''
+    count: int = 0
+
 class BlockIn(BaseModel):
     name: str = Field(min_length=1, max_length=16, pattern=r'^[A-Za-z0-9 -]+$')
     levels: int = Field(ge=1, le=60)
-    units_per_level: int = Field(ge=1, le=30)
+    units_per_level: int | None = Field(default=None, ge=1, le=30)
     first_unit: int = Field(default=401, ge=1, le=9999)
+    room_mix: list[RoomMixIn] | None = None
 
 class UnitIn(BaseModel):
     level: int = Field(ge=1, le=60)
@@ -92,7 +97,7 @@ class DecisionIn(BaseModel):
 
 class PointIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
-    kind: Literal['power', 'light', 'socket', 'switch', 'data', 'tv'] = 'power'
+    kind: Literal['power', 'light', 'socket', 'switch', 'aircon', 'heater', 'fan', 'data', 'tv'] = 'power'
 
 class TestIn(BaseModel):
     point_id: str
@@ -198,3 +203,11 @@ class DefectTaskIn(BaseModel):
 
 class RtoChecklistIn(BaseModel):
     template: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(min_length=1, max_length=30)
+
+class PointTemplateRow(BaseModel):
+    room: str = ''
+    kind: str = ''
+    count: int = 0
+
+class PointTemplatesIn(BaseModel):
+    templates: dict[str, list[PointTemplateRow]] = Field(default_factory=dict)
