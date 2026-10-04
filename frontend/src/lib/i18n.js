@@ -43,7 +43,9 @@ rtoChecklist:['RTO readiness checklist'],rtoChecklistSub:['Must be confirmed bef
 confirmAll:['Confirm every item to request'],requestedBy:['Requested by'],decidedBy:['Decided by'],decisionNote:['Decision note'],
 moveTo:['Move to'],defectHistory:['Status history'],completeChecklist:['Complete the checklist first'],
 photoStoragePending:['Photo storage is not configured yet.'],viewDefect:['View defect'],allSeverities:['All severities'],
-taskCompleted:['Task completed'],defectVerified:['Defect verified'],noTasks:['No tasks here yet'],noDefects:['No defects here yet']
+taskCompleted:['Task completed'],defectVerified:['Defect verified'],noTasks:['No tasks here yet'],noDefects:['No defects here yet'],
+myWork:['My work','আমার কাজ','我的工作'],myWorkSub:['Tasks and defects assigned to you. Tap to update.','আপনাকে দেওয়া কাজ ও ত্রুটি। আপডেট করতে ট্যাপ করুন।','分配给您的任务和缺陷，点击更新。'],noWork:['Nothing assigned right now','এখন কোনো কাজ দেওয়া হয়নি','暂无分配的工作'],
+linkedTasks:['Linked tasks','সংযুক্ত কাজ','关联任务'],followupTask:['Create follow-up task','ফলো-আপ কাজ তৈরি করুন','创建跟进任务'],linkToDefect:['Link to defect','ত্রুটির সাথে যুক্ত করুন','关联缺陷'],defect:['Defect','ত্রুটি','缺陷']
 };
 const Context=createContext(null);
 export function LanguageProvider({children}) {const [lang,setLangState]=useState(()=>localStorage.getItem('voltcraft-language')||'en'); const setLang=l=>{setLangState(l);localStorage.setItem('voltcraft-language',l);document.documentElement.lang=l;};const index={en:0,bn:1,zh:2}[lang]??0;return <Context.Provider value={{lang,setLang,t:key=>words[key]?.[index]||words[key]?.[0]||key}}>{children}</Context.Provider>;}

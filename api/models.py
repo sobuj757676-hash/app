@@ -172,6 +172,7 @@ class TaskIn(BaseModel):
     title: str = Field(min_length=2, max_length=150)
     description: str = Field(default='', max_length=2000)
     unit_id: str | None = None
+    defect_id: str | None = None
     assigned_to: str = Field(min_length=1)
     priority: Literal['low', 'medium', 'high', 'urgent'] = 'medium'
     due_date: date | None = None
@@ -182,10 +183,18 @@ class TaskPatchIn(BaseModel):
     priority: Literal['low', 'medium', 'high', 'urgent'] | None = None
     due_date: date | None = None
     assigned_to: str | None = Field(default=None, min_length=1)
+    defect_id: str | None = None
 
 class TaskTransitionIn(BaseModel):
     status: Literal['todo', 'in_progress', 'done', 'cancelled']
     note: str = Field(default='', max_length=1000)
+
+class DefectTaskIn(BaseModel):
+    title: str = Field(min_length=2, max_length=150)
+    description: str = Field(default='', max_length=2000)
+    assigned_to: str | None = Field(default=None, min_length=1)
+    priority: Literal['low', 'medium', 'high', 'urgent'] = 'medium'
+    due_date: date | None = None
 
 class RtoChecklistIn(BaseModel):
     template: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(min_length=1, max_length=30)
