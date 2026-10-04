@@ -43,7 +43,7 @@ export const DefectDrawer=({defectId,onClose})=>{
   try{await mutate('post',`/defects/${defect.id}/assign`,{assignee_id:assignee});setAssignee('');toast.success(t('saved'));}
   catch{}finally{setBusy(false);}
  };
- return <Sheet open={!!defect} onOpenChange={v=>!v&&onClose()}><SheetContent className="unit-drawer defect-drawer" data-testid="defect-drawer">
+ return <><Sheet open={!!defect} onOpenChange={v=>!v&&onClose()}><SheetContent className="unit-drawer defect-drawer" data-testid="defect-drawer">
   <SheetHeader>
    <div className="drawer-eyebrow">{defect.block?`Blk ${defect.block} · #${String(defect.level).padStart(2,'0')}-${defect.number}`:t('defects')}</div>
    <SheetTitle data-testid="defect-drawer-title">{defect.title}</SheetTitle>
@@ -83,6 +83,7 @@ export const DefectDrawer=({defectId,onClose})=>{
   <div className="drawer-section"><h3><History size={16}/>{t('defectHistory')}</h3>
    <div className="unit-history">{defect.history?.length?defect.history.slice().reverse().map((h,i)=><div key={i} data-testid={`defect-history-${i}`}><span className="history-dot"/><strong>{t(h.status)}</strong><p>{h.note||'—'}</p><small>{h.by_name}</small><time>{new Date(h.at).toLocaleString()}</time></div>):<Empty text={t('noHistory')}/>}</div>
   </div>
- </SheetContent></Sheet>;
+ </SheetContent></Sheet>
  {taskModal&&<TaskModal open defectId={defect.id} requireAssignee={false} onClose={()=>{setTaskModal(false);api.get(`/defects/${defect.id}/tasks`).then(r=>setLinkedTasks(r.data)).catch(()=>{});}}/>}
+ </>;
 };

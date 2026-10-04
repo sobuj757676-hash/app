@@ -142,6 +142,9 @@ async def workspace(pid: str, user: dict = Depends(get_current_user),
                              if d.get('assigned_to') == user['id']
                              or d.get('reported_by', {}).get('id') == user['id']]
         result['tasks'] = [t for t in result['tasks'] if t.get('assigned_to') == user['id']]
+    # Embed linked-defect summaries so task cards / worker queue can show defect chips.
+    from tasks import _attach_defects
+    result['tasks'] = await _attach_defects(result['tasks'])
     result['activity'] = await database().activity.find({'project_id': pid}, {'_id': 0}).sort('created_at', -1).limit(20).to_list(20)
     result['pagination'] = pagination
     return result
