@@ -98,8 +98,13 @@ async def upload_photo(file: UploadFile = File(...),
     photo_id = uid()
     ext = ALLOWED_MIME[file.content_type]
     base = f'photos/{project_id}/{entity_type}/{entity_id}/{photo_id}'
-    original = _blob_put(f'{base}.{ext}', data, file.content_type)
-    thumb = _blob_put(f'{base}_thumb.jpg', _thumbnail(data), 'image/jpeg')
+    try:
+        original = _blob_put(f'{base}.{ext}', data, file.content_type)
+        thumb = _blob_put(f'{base}_thumb.jpg', _thumbnail(data), 'image/jpeg')
+    except Exception as e:
+        raise HTTPException(
+            502, f'Photo storage upload failed ({type(e).__name__}: {e}). '
+                 'Ask your admin to check the BLOB_READ_WRITE_TOKEN value.') from e
     doc = {
         'id': photo_id, 'project_id': project_id,
         'entity_type': entity_type, 'entity_id': entity_id,
