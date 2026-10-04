@@ -19,6 +19,11 @@ import Projects from './pages/Projects';
 import Reports from './pages/Reports';
 import References from './pages/References';
 import Settings from './pages/Settings';
+import ProjectSettings from './pages/settings/ProjectSettings';
+import RtoChecklist from './pages/settings/RtoChecklist';
+import PointTemplates,{PointTemplateEditor} from './pages/settings/PointTemplates';
+import PasswordSettings from './pages/settings/PasswordSettings';
+import LanguageSettings from './pages/settings/LanguageSettings';
 import Users from './pages/Users';
 import Login from './pages/Login';
 import './App.css';
@@ -32,7 +37,7 @@ function RequireAuth({children}){
  if(role==='worker'&&!['/','/units','/defects','/tasks'].includes(path))return <Navigate to="/" replace/>;
  if(path==='/users'&&!['admin','manager'].includes(role))return <Navigate to="/" replace/>;
  if(path==='/expenses'&&role==='supervisor')return <Navigate to="/" replace/>;
- if(path==='/settings'&&role==='worker')return <Navigate to="/" replace/>;
+ if(path.startsWith('/settings')&&role==='worker')return <Navigate to="/" replace/>;
  return children;
 }
 function Home(){
@@ -56,6 +61,12 @@ function Shell(){
    <Route path="/reports" element={<Reports/>}/>
    <Route path="/references" element={<References/>}/>
    <Route path="/settings" element={<Settings/>}/>
+   <Route path="/settings/project" element={<ProjectSettings/>}/>
+   <Route path="/settings/rto-checklist" element={<RtoChecklist/>}/>
+   <Route path="/settings/point-templates" element={<PointTemplates/>}/>
+   <Route path="/settings/point-templates/:roomType" element={<PointTemplateEditor/>}/>
+   <Route path="/settings/password" element={<PasswordSettings/>}/>
+   <Route path="/settings/language" element={<LanguageSettings/>}/>
    <Route path="/users" element={<Users/>}/>
    <Route path="*" element={<Navigate to="/" replace/>}/>
   </Route>
