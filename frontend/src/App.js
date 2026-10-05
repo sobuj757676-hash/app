@@ -1,5 +1,5 @@
 import {useEffect,useRef} from 'react';
-import {BrowserRouter,Routes,Route,Navigate,useLocation} from 'react-router-dom';
+import {BrowserRouter,Routes,Route,Navigate,useLocation,useNavigate} from 'react-router-dom';
 import {LanguageProvider,useLanguage} from './lib/i18n';
 import {AuthProvider,useAuth} from './lib/auth';
 import {WorkspaceProvider} from './lib/store';
