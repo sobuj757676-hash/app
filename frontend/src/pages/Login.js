@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {useNavigate} from 'react-router-dom';
+import {useNavigate,Navigate} from 'react-router-dom';
 import {Zap,Loader2,Lock} from 'lucide-react';
 import {useAuth} from '../lib/auth';
 import {useLanguage} from '../lib/i18n';
@@ -8,7 +8,7 @@ import {Input} from '../components/ui/input';
 import {Button} from '../components/ui/button';
 
 export function ForceChangePassword({onDone}){
- const {t}=useLanguage();const {changePassword}=useAuth();
+ const {t}=useLanguage();const {changePassword,logout}=useAuth();
  const [cur,setCur]=useState(''),[nw,setNw]=useState(''),[nw2,setNw2]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  const submit=async e=>{
   e.preventDefault();setError('');
@@ -16,7 +16,7 @@ export function ForceChangePassword({onDone}){
   if(nw.length<8){setError(t('passwordMin'));return;}
   setBusy(true);
   try{await changePassword(cur,nw);onDone&&onDone();}
-  catch(e){setError(errorText(e));}
+  catch(e){setError(errorText(e,t));}
   finally{setBusy(false);}
  };
  return <div className="login-card" data-testid="force-change-password">
@@ -29,19 +29,21 @@ export function ForceChangePassword({onDone}){
    {error&&<div className="form-error" data-testid="change-password-error">{error}</div>}
    <Button type="submit" className="action login-submit" disabled={busy} data-testid="change-password-submit">{busy&&<Loader2 className="spin" size={15}/>} {t('changePassword')}</Button>
   </form>
+  <button type="button" className="force-signout" data-testid="force-change-signout" onClick={logout}>{t('signOut')}</button>
  </div>;
 }
 
 export default function Login(){
- const {t}=useLanguage();const {login}=useAuth();const navigate=useNavigate();
+ const {t}=useLanguage();const {login,user}=useAuth();const navigate=useNavigate();
  const [identifier,setIdentifier]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[mustChange,setMustChange]=useState(false);
+ if(user)return <Navigate to="/" replace/>;
  const submit=async e=>{
   e.preventDefault();setError('');setBusy(true);
   try{
    const u=await login(identifier,password);
    if(u.must_change_password)setMustChange(true);
    else navigate('/',{replace:true});
-  }catch(e){setError(errorText(e));}
+  }catch(e){setError(errorText(e,t));}
   finally{setBusy(false);}
  };
  return <div className="login-page" data-testid="login-page">

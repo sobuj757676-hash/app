@@ -1,5 +1,5 @@
-import {useState,useEffect} from 'react';
-import {useNavigate} from 'react-router-dom';
+import {useState,useEffect,useRef} from 'react';
+import {useNavigate,useSearchParams} from 'react-router-dom';
 import {Check,Lock,ArrowRight,ClipboardCheck,Plus,Activity,Save,RotateCcw,Camera} from 'lucide-react';
 import {Sheet,SheetContent,SheetHeader,SheetTitle,SheetDescription} from './ui/sheet';
 import {Button} from './ui/button';
@@ -7,13 +7,25 @@ import {useLanguage} from '../lib/i18n';
 import {useWorkspace} from '../lib/store';
 import {useAuth,canWrite} from '../lib/auth';
 import {label,status,fmtDateTime} from '../lib/api';
+import {ROOM_TYPES} from './BlockModal';
 import {StatusBadge,ProgressBar,FormModal,Action,Empty} from './Common';
 import {InspectionRequest,InspectionDecision} from './InspectionForms';
 import {PhotoUpload,PhotoGallery} from './Photos';
 import {toast} from 'sonner';
+const DRAWER_TABS=['workflow','defects','testPoints','details','history'];
 export const UnitDrawer=()=>{
- const {t,lang}=useLanguage();const {data,selectedUnit,setSelectedUnit,mutate}=useWorkspace();const {user}=useAuth();const ro=!canWrite(user);const [tab,setTab]=useState('workflow'),[modal,setModal]=useState(null),[busy,setBusy]=useState(false),[note,setNote]=useState('');const navigate=useNavigate();const [photoPoint,setPhotoPoint]=useState(null),[photoTick,setPhotoTick]=useState(0);
- useEffect(()=>{setTab('workflow');setModal(null);setNote('');setPhotoPoint(null);},[selectedUnit]);
+ const {t,lang}=useLanguage();const {data,selectedUnit,setSelectedUnit,mutate}=useWorkspace();const {user}=useAuth();const ro=!canWrite(user);const [tab,setTab]=useState('workflow'),[modal,setModal]=useState(null),[busy,setBusy]=useState(false),[note,setNote]=useState('');const navigate=useNavigate();const [params,setParams]=useSearchParams();const [photoPoint,setPhotoPoint]=useState(null),[photoTick,setPhotoTick]=useState(0);
+ const lastUnit=useRef(null);
+ // One-shot ?tab=<tab> deep-link: opens the drawer directly on the requested tab
+ // (used by Testing's ready chips), then consumes the param so later manual
+ // tab switches inside the drawer are not yanked back.
+ useEffect(()=>{
+  if(selectedUnit){
+   const tb=params.get('tab');
+   if(tb&&DRAWER_TABS.includes(tb)){setTab(tb);lastUnit.current=selectedUnit;setModal(null);setNote('');setPhotoPoint(null);const p=Object.fromEntries(params.entries());delete p.tab;setParams(p);}
+   else if(selectedUnit!==lastUnit.current){lastUnit.current=selectedUnit;setTab('workflow');setModal(null);setNote('');setPhotoPoint(null);}
+  }else{lastUnit.current=null;}
+ },[selectedUnit,params,setParams]);
  const u=data?.units.find(x=>x.id===selectedUnit);if(!u)return null;
  const unitDefects=(data.defects||[]).filter(d=>d.unit_id===u.id);
  const inspection=data.inspections.find(i=>i.unit_id===u.id&&i.status==='pending');const tests=data.tests.filter(x=>x.unit_id===u.id).sort((a,b)=>a.created_at.localeCompare(b.created_at));const latest=Object.fromEntries(tests.map(x=>[x.point_id,x]));const allPass=u.points.length>0&&u.points.every(p=>latest[p.id]?.result==='pass');const passCount=u.points.filter(p=>latest[p.id]?.result==='pass').length;
@@ -25,7 +37,7 @@ export const UnitDrawer=()=>{
  {tab==='details'&&<div className="unit-details"><dl>{[['block',u.block],['level',u.level],['unit',label(u)],['unitType',u.unit_type],['team',u.assigned_to||t('unassigned')],['note',u.note||'—']].map(([k,v])=><div key={k}><dt>{t(k)}</dt><dd data-testid={`unit-detail-${k}`}>{v}</dd></div>)}</dl>{!ro&&<Action id="edit-unit-details" icon={Save} onClick={()=>setModal('edit')}>{t('edit')}</Action>}{u.sample&&!ro&&<button className="reset-sample" data-testid="reset-sample-unit" onClick={async()=>{if(window.confirm(t('resetConfirm'))){try{await mutate('post',`/units/${u.id}/reset-sample`,{});toast.success(t('saved'));}catch{}}}}><RotateCcw size={15}/>{t('resetSample')}</button>}</div>}
  {tab==='history'&&<div className="unit-history">{u.history.length?u.history.slice().reverse().map((h,i)=><div key={i} data-testid={`unit-history-${i}`}><span className="history-dot"/><strong>{t(`stage${h.stage}`)}</strong><p>{h.note||t('completed')}</p>{h.inspector&&<small>{h.inspector} · {t(h.result)}</small>}<time>{fmtDateTime(h.at,lang)}</time></div>):<Empty text={t('noHistory')}/>}</div>}
  {modal==='request'&&<InspectionRequest unit={u} onClose={()=>setModal(null)}/>} {modal==='review'&&inspection&&<InspectionDecision inspection={inspection} onClose={()=>setModal(null)}/>}
- {modal==='edit'&&<FormModal open onClose={()=>setModal(null)} title={t('details')} initial={{level:u.level,number:u.number,unit_type:u.unit_type,assigned_to:u.assigned_to,note:u.note}} fields={[{name:'level',label:t('level'),type:'number',min:1,max:data.blocks.find(b=>b.id===u.block_id)?.levels},{name:'number',label:t('unit')},{name:'unit_type',label:t('unitType'),options:['2-room Flexi','3-room','4-room','5-room']},{name:'assigned_to',label:t('team'),required:false},{name:'note',label:t('note'),type:'textarea',wide:true,required:false}]} onSubmit={v=>mutate('patch',`/units/${u.id}`,v)}/>}
+ {modal==='edit'&&<FormModal open onClose={()=>setModal(null)} title={t('details')} initial={{level:u.level,number:u.number,unit_type:u.unit_type,assigned_to:u.assigned_to,note:u.note}} fields={[{name:'level',label:t('level'),type:'number',min:1,max:data.blocks.find(b=>b.id===u.block_id)?.levels},{name:'number',label:t('unit')},{name:'unit_type',label:t('unitType'),options:ROOM_TYPES.map(rt=>({value:rt,label:t(rt)}))},{name:'assigned_to',label:t('team'),required:false},{name:'note',label:t('note'),type:'textarea',wide:true,required:false}]} onSubmit={v=>mutate('patch',`/units/${u.id}`,v)}/>}
  {modal==='point'&&<FormModal open onClose={()=>setModal(null)} title={t('addPoint')} initial={{name:'',kind:'power'}} fields={[{name:'name',label:t('point')},{name:'kind',label:t('kind'),options:['power','light','socket','switch','aircon','heater','fan','data'].map(k=>({value:k,label:t(k)}))}]} onSubmit={v=>mutate('post',`/units/${u.id}/points`,v)}/>}
  {modal?.test&&<FormModal open onClose={()=>setModal(null)} title={`${t('recordTest')} · ${modal.test.name}`} initial={{point_id:modal.test.id,voltage:'',l_n:'',l_e:'',n_e:'',result:'pass',tested_by:'',note:''}} fields={[{name:'voltage',label:t('voltage'),type:'number',min:1,max:5000},{name:'tested_by',label:t('testedBy')},{name:'l_n',label:'L–N (MΩ)',type:'number',min:0},{name:'l_e',label:'L–E (MΩ)',type:'number',min:0},{name:'n_e',label:'N–E (MΩ)',type:'number',min:0},{name:'result',label:t('result'),options:[{value:'pass',label:t('pass')},{value:'fail',label:t('fail')}]},{name:'note',label:t('note'),required:false,type:'textarea',wide:true}]} onSubmit={v=>mutate('post',`/units/${u.id}/tests`,v)}/>}
  </SheetContent></Sheet>;

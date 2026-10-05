@@ -13,9 +13,9 @@ export function Stepper({value,onChange,testid,max=30}){
  const {t}=useLanguage();
  const set=v=>onChange(Math.max(0,Math.min(max,v)));
  return <div className="stepper" data-testid={testid}>
-  <button type="button" className="icon-button" data-testid={`${testid}-minus`} disabled={value<=0} onClick={()=>set(value-1)} aria-label="minus"><Minus size={16}/></button>
+  <button type="button" className="icon-button" data-testid={`${testid}-minus`} disabled={value<=0} onClick={()=>set(value-1)} aria-label={t('decrease')}><Minus size={16}/></button>
   <span className="stepper-value" data-testid={`${testid}-value`}>{value}</span>
-  <button type="button" className="icon-button" data-testid={`${testid}-plus`} disabled={value>=max} onClick={()=>set(value+1)} aria-label="plus"><Plus size={16}/></button>
+  <button type="button" className="icon-button" data-testid={`${testid}-plus`} disabled={value>=max} onClick={()=>set(value+1)} aria-label={t('increase')}><Plus size={16}/></button>
  </div>;
 }
 
@@ -50,6 +50,7 @@ export function BlockModal({open,onClose,onSubmit}){
       <Stepper value={mix[rt]||0} onChange={v=>setMix(m=>({...m,[rt]:v}))} testid={`mix-${rt}`}/>
      </div>)}
      <div className="mix-total" data-testid="mix-total"><strong>{total}</strong> {t('totalUnitsPerLevel')}</div>
+     {(!total||!name.trim())&&<p className="form-hint" data-testid="block-save-hint">{t('blockSaveHint')}</p>}
     </div>
     <div className="form-footer">
      <Button type="button" variant="outline" data-testid="block-cancel" onClick={onClose}>{t('cancel')}</Button>

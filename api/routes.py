@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import Response
-from models import Record, Workspace, ProjectIn, BlockIn, UnitIn, AdvanceIn, InspectionIn, DecisionIn, PointIn, TestIn, RtoChecklistIn, PointTemplatesIn
+from models import Record, Workspace, ProjectIn, BlockIn, BlockRenameIn, UnitIn, AdvanceIn, InspectionIn, DecisionIn, PointIn, TestIn, RtoChecklistIn, PointTemplatesIn
 from seed import STAGES, points_for, DEFAULT_RTO_CHECKLIST, DEFAULT_POINT_TEMPLATES, points_for_template, ROOM_TYPES, POINT_KINDS
 from auth import get_current_user, require_roles, OPS_ROLES, DECIDE_ROLES, MONEY_ROLES
 
@@ -184,6 +184,9 @@ async def workspace(pid: str, user: dict = Depends(get_current_user),
     # Embed linked-defect summaries so task cards / worker queue can show defect chips.
     from tasks import _attach_defects
     result['tasks'] = await _attach_defects(result['tasks'])
+    # Enrich defect assignee names so no role ever sees a raw user id.
+    from defects import _attach_assignee_names
+    result['defects'] = await _attach_assignee_names(result['defects'])
     result['activity'] = await database().activity.find({'project_id': pid}, {'_id': 0}).sort('created_at', -1).limit(20).to_list(20)
     result['pagination'] = pagination
     return result
@@ -231,6 +234,36 @@ async def create_block(pid: str, data: BlockIn, user: dict = Depends(require_rol
     await database().units.insert_many(units)
     await log(pid, 'project', f'Blk {name} · {len(units)} units added', user)
     return block
+
+@router.patch('/projects/{pid}/blocks/{bid}', response_model=Record)
+async def rename_block(pid: str, bid: str, data: BlockRenameIn, user: dict = Depends(require_roles(*MONEY_ROLES))):
+    block = await get('blocks', bid)
+    if block['project_id'] != pid: raise HTTPException(404, 'Block not found')
+    name = data.name.strip().upper()
+    if name != block['name']:
+        if await database().blocks.find_one({'project_id': pid, 'name': name, 'id': {'$ne': bid}}):
+            raise HTTPException(409, 'Block already exists')
+        old = block['name']
+        before = dict(block)
+        await database().blocks.update_one({'id': bid}, {'$set': {'name': name}})
+        # Cascade the denormalized block name kept on units/defects/inspections/tests.
+        await database().units.update_many({'block_id': bid}, {'$set': {'block': name}})
+        for coll in ['defects', 'inspections', 'tests']:
+            await database()[coll].update_many({'project_id': pid, 'block': old}, {'$set': {'block': name}})
+        after = await get('blocks', bid)
+        await log_change(pid, 'block', f'Block renamed {old} → {name}', user, before, after)
+    return await get('blocks', bid)
+
+@router.delete('/projects/{pid}/blocks/{bid}')
+async def delete_block(pid: str, bid: str, user: dict = Depends(require_roles(*MONEY_ROLES))):
+    block = await get('blocks', bid)
+    if block['project_id'] != pid: raise HTTPException(404, 'Block not found')
+    # No cascade: refuse while units exist so unit records can't be silently orphaned.
+    n = await database().units.count_documents({'block_id': bid})
+    if n: raise HTTPException(409, f'Block has {n} units — delete its units first')
+    await database().blocks.delete_one({'id': bid})
+    await log(pid, 'block', f'Block {block["name"]} deleted', user)
+    return {'deleted': True}
 
 @router.post('/blocks/{bid}/units', response_model=Record)
 async def create_unit(bid: str, data: UnitIn, user: dict = Depends(require_roles(*OPS_ROLES))):

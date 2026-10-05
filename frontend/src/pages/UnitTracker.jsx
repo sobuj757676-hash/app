@@ -44,7 +44,7 @@ export default function UnitTracker(){
  const openUnit=u=>{setSelectedUnit(u.id);setParams({block:u.block_id,unit:u.id});};
  return <div className="page-enter">
   <PageTitle title={t('units')} subtitle={t('blockOverview')}>
-   <ExportButton/>{!ro&&<Action id="add-unit" onClick={()=>setModal(true)} disabled={!chosen}>{t('addUnit')}</Action>}
+   <ExportButton/>{!ro&&<span title={!chosen?t('selectBlockFirst'):undefined}><Action id="add-unit" onClick={()=>setModal(true)} disabled={!chosen}>{t('addUnit')}</Action></span>}
   </PageTitle>
   <div className="block-tabs">
    <button data-testid="block-tab-all" className={allBlocks?'active':''} onClick={()=>chooseBlock('all')}><Building2 size={16}/>{t('allBlocks')}<span>{data.units.length}</span></button>
@@ -69,7 +69,7 @@ export default function UnitTracker(){
      {stacks.map(n=>{const u=cells[`${l}-${n}`];return u?<button key={n} data-testid={`matrix-unit-${u.id}`} aria-label={`${t('block')} ${u.block} ${label(u)} ${t(status(u))}`} title={`${label(u)} · ${t(u.stage===9?'completed':`stage${u.stage}`)}`} className={`unit-cell ${status(u)}`} onClick={()=>openUnit(u)}>{u.stage===9?<Check size={16}/>:u.rto==='pending'?<Clock3 size={16}/>:u.rto==='rework'?<AlertTriangle size={16}/>:<span>{u.stage}<small>/9</small></span>}</button>:<div className="unit-cell unavailable" key={n}>—</div>;})}
     </div>)}
    </div></div>:
-   <div className="table-scroll"><table data-testid="units-table">
+   <div className="table-scroll tracker-list"><table data-testid="units-table">
     <thead><tr>{['block','unit','unitType','currentStage','team','status','progress'].map(k=><th key={k}>{t(k)}</th>)}<th/></tr></thead>
     <tbody>{filtered.map(u=><tr key={u.id} data-testid={`unit-row-${u.id}`}>
      <td>{u.block}</td><td><button className="unit-link" data-testid={`open-unit-${u.id}`} onClick={()=>openUnit(u)}>{label(u)}</button></td><td>{u.unit_type}</td><td>{t(u.stage===9?'completed':`stage${u.stage}`)}</td><td>{u.assigned_to||t('unassigned')}</td><td><StatusBadge id={`unit-status-${u.id}`} value={status(u)}/></td><td><span className="mono">{u.stage}/9</span></td><td><button className="icon-button" title={t('view')} data-testid={`unit-detail-${u.id}`} onClick={()=>openUnit(u)}><ArrowUpRight size={17}/></button></td>

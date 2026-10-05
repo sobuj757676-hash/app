@@ -1,0 +1,40 @@
+/* fixes-c.css — batch C (register screens): MEDIUM+LOW UI/UX findings.
+   Owned by the register-screens batch; do NOT edit App.css/index.css. */
+
+/* 1. Task deep-link highlight (?open=<id>): visible + scroll margin so the
+   sticky topbar doesn't cover the highlighted card. */
+.task-card{scroll-margin-top:90px;}
+.task-card.task-highlight{outline:2px solid var(--blue);outline-offset:2px;
+ box-shadow:0 0 0 4px var(--blue-soft);}
+
+/* 5. DefectChip tap affordance: underline + arrow icon. */
+button[data-testid^="defect-chip-"]{text-decoration:underline;text-underline-offset:3px;}
+button[data-testid^="defect-chip-"] svg{flex-shrink:0;}
+
+/* 5. 36–40px transition buttons inside task cards. */
+.task-card .table-action{min-height:38px;padding:9px 14px;}
+
+/* 4. Empty-state CTA button adjacent to <Empty/> (Common.jsx untouched). */
+.empty-cta{display:flex;flex-direction:column;align-items:center;gap:14px;padding:8px 0 20px;}
+
+/* 12/13. Inline error + retry affordance for fetch-driven sections. */
+.inline-error{display:flex;flex-direction:column;align-items:center;gap:10px;
+ padding:16px 12px;color:var(--muted-text);font-size:12px;text-align:center;}
+.text-link{background:none;border:none;color:var(--blue);text-decoration:underline;
+ font-size:inherit;cursor:pointer;padding:0;}
+
+/* 10. Spend-legend buttons: ≥10px padding, stronger selected state. */
+.spend-legend button{padding:10px 12px;}
+.spend-legend button.selected{border-color:var(--blue);background:var(--blue-soft);
+ box-shadow:inset 0 0 0 1px var(--blue);}
+
+/* 11. Notification badge shows the unread count (consistent with the
+   count-pill in the popover header). */
+.notification-badge{position:absolute;right:4px;top:2px;min-width:16px;height:16px;
+ padding:0 4px;background:#e5a741;border:1px solid var(--surface);border-radius:9px;
+ color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;
+ justify-content:center;line-height:1;}
+
+/* 12. Photo gallery load error state. */
+.photo-load-error{display:flex;flex-direction:column;align-items:center;gap:10px;
+ padding:30px 10px;color:var(--muted-text);font-size:12px;text-align:center;}

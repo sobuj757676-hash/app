@@ -10,7 +10,7 @@ import {SubHeader} from './shared';
 export default function PasswordSettings(){
  const {t}=useLanguage();const {data}=useWorkspace();const {changePassword}=useAuth();
  const [pw,setPw]=useState({cur:'',nw:'',nw2:''}),[pwMsg,setPwMsg]=useState('');
- const doPw=async e=>{e.preventDefault();setPwMsg('');if(pw.nw!==pw.nw2){setPwMsg(t('passwordMismatch'));return;}if(pw.nw.length<8){setPwMsg(t('passwordMin'));return;}try{await changePassword(pw.cur,pw.nw);setPw({cur:'',nw:'',nw2:''});toast.success(t('passwordChanged'));}catch(err){setPwMsg(errorText(err));}};
+ const doPw=async e=>{e.preventDefault();setPwMsg('');if(pw.nw!==pw.nw2){setPwMsg(t('passwordMismatch'));return;}if(pw.nw.length<8){setPwMsg(t('passwordMin'));return;}try{await changePassword(pw.cur,pw.nw);setPw({cur:'',nw:'',nw2:''});toast.success(t('passwordChanged'));}catch(err){setPwMsg(errorText(err,t));}};
  return <div className="page-enter">
   <SubHeader title={t('changePassword')} subtitle={data.project.name}/>
   <form className="settings-form" data-testid="change-password-form" onSubmit={doPw}>

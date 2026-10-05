@@ -60,7 +60,7 @@ export function PointTemplateEditor(){
  const renameGroup=(oldName,next)=>setRows(rs=>rs.map(r=>(r.room||'').trim()===oldName?{...r,room:next}:r));
  const addPoint=name=>setRows(rs=>[...rs,{room:name,kind:'power',count:1}]);
  const addRoom=()=>setRows(rs=>[...rs,{room:'',kind:'power',count:1}]);
- const save=async()=>{if(!proj||busy)return;setBusy(true);try{await api.put(`/projects/${pid}/settings/point-templates`,{templates:{...saved,[roomType]:rows}});await refresh();toast.success(t('templateUpdated'));}catch(e){toast.error(errorText(e));}finally{setBusy(false);}};
+ const save=async()=>{if(!proj||busy)return;setBusy(true);try{await api.put(`/projects/${pid}/settings/point-templates`,{templates:{...saved,[roomType]:rows}});await refresh();toast.success(t('templateUpdated'));}catch(e){toast.error(errorText(e,t));}finally{setBusy(false);}};
  return <div className="page-enter">
   <button type="button" className="settings-back" data-testid="settings-back" onClick={()=>navigate('/settings/point-templates')}>
    <ChevronLeft size={17}/>{t('back')}
@@ -78,14 +78,12 @@ export function PointTemplateEditor(){
     {g.idx.map(i=>{const r=rows[i];return <div key={i} className="tpl-mini-row" data-testid={`tpl-row-${i}`}>
      <select data-testid={`tpl-kind-${i}`} value={r.kind} disabled={!proj} onChange={e=>editRow(i,{kind:e.target.value})}>{POINT_KINDS.map(k=><option key={k} value={k}>{t(k)}</option>)}</select>
      <Stepper value={countOf(r)} max={50} testid={`tpl-count-${i}`} onChange={v=>editRow(i,{count:v})}/>
-     {proj&&<button type="button" className="icon-button" data-testid={`tpl-del-${i}`} onClick={()=>delRow(i)}><X size={15}/></button>}
+     {proj&&<button type="button" className="icon-button" data-testid={`tpl-del-${i}`} onClick={()=>{if(window.confirm(t('confirmDelete')))delRow(i);}}><X size={15}/></button>}
     </div>;})}
     {proj&&<button type="button" className="tpl-add-point" data-testid={`tpl-add-point-${gi}`} onClick={()=>addPoint(g.name)}><Plus size={14}/>{t('addPoint')}</button>}
    </div>)}
-   {proj&&<div className="tpl-editor-actions">
-    <button type="button" className="tpl-add-room" data-testid="tpl-add-room" onClick={addRoom}><Plus size={15}/>{t('addRoom')}</button>
-    <Action id="tpl-save" icon={Save} disabled={busy} onClick={save}>{t('save')}</Action>
-   </div>}
+   {proj&&<button type="button" className="tpl-add-room" data-testid="tpl-add-room" onClick={addRoom}><Plus size={15}/>{t('addRoom')}</button>}
+   {proj&&<div className="tpl-sticky-save" data-testid="tpl-sticky-save"><Action id="tpl-save" icon={Save} disabled={busy} onClick={save}>{t('save')}</Action>{dirty&&<span className="dirty-badge">{t('unsavedChanges')}</span>}</div>}
   </div>
  </div>;
 }

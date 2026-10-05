@@ -1,8 +1,9 @@
 import {useState} from 'react';
+import {useNavigate} from 'react-router-dom';
 import {Loader2,ClipboardCheck,Camera} from 'lucide-react';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription} from './ui/dialog';
 import {Button} from './ui/button';
-import {FormModal,Field} from './Common';
+import {FormModal,Field,TextLink} from './Common';
 import {useLanguage} from '../lib/i18n';
 import {useWorkspace} from '../lib/store';
 import {useAuth,canDecideRto} from '../lib/auth';
@@ -11,7 +12,7 @@ import {PhotoUpload,PhotoGallery} from './Photos';
 import {toast} from 'sonner';
 
 export const InspectionRequest=({unit,onClose})=>{
- const {t}=useLanguage();const {data,mutate}=useWorkspace();
+ const {t}=useLanguage();const {data,mutate}=useWorkspace();const navigate=useNavigate();
  const template=data.project.rto_checklist_template||[];
  const [values,setValues]=useState({inspector:'',date:today(),note:''});
  const [checks,setChecks]=useState(template.map(()=>false));
@@ -29,8 +30,9 @@ export const InspectionRequest=({unit,onClose})=>{
  <form onSubmit={submit} data-testid="rto-request-form">
   <div className="form-fields">{fields.map(f=><label className={f.wide?'wide':''} key={f.name}>{f.label}<Field field={f} value={values[f.name]} onChange={value=>setValues(v=>({...v,[f.name]:value}))}/></label>)}</div>
   <div className="checklist-confirm" data-testid="rto-checklist"><h4><ClipboardCheck size={16}/>{t('rtoChecklist')}</h4>
-   {template.map((item,i)=><label key={i} className="check-item" data-testid={`rto-check-${i}`}><input type="checkbox" checked={checks[i]} onChange={e=>{const n=[...checks];n[i]=e.target.checked;setChecks(n);}}/><span>{item}</span></label>)}
-   {!allChecked&&<p className="form-hint" data-testid="rto-checklist-hint">{t('confirmAll')}</p>}
+   {template.length===0?<div className="checklist-empty" data-testid="rto-checklist-empty"><p className="form-hint">{t('rtoTemplateEmpty')}</p><TextLink id="rto-settings-link" onClick={()=>navigate('/settings/rto-checklist')}>{t('openRtoSettings')}</TextLink></div>:
+   <>{template.map((item,i)=><label key={i} className="check-item" data-testid={`rto-check-${i}`}><input type="checkbox" checked={checks[i]} onChange={e=>{const n=[...checks];n[i]=e.target.checked;setChecks(n);}}/><span>{item}</span></label>)}
+   {!allChecked&&<p className="form-hint" data-testid="rto-checklist-hint">{t('confirmAll')}</p>}</>}
   </div>
   <div className="form-footer"><Button type="button" variant="outline" data-testid="form-cancel" onClick={onClose}>{t('cancel')}</Button><Button type="submit" className="action" disabled={busy||!allChecked} data-testid="form-submit">{busy&&<Loader2 className="spin" size={15}/>} {t('requestRto')}</Button></div>
  </form></DialogContent></Dialog>;

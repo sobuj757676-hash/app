@@ -1,0 +1,39 @@
+/* fixes-b.css — styles for the audit medium/low batch B (plan & track screens).
+   Kept separate from App.css/index.css (owned by another agent). Loaded once
+   via an import in pages/Overview.jsx. */
+
+/* --- Slim overview banner strip (replaces the 158–177px photo banner) --- */
+.banner-strip{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:14px 18px}
+.banner-strip-main{min-width:0}
+.banner-strip .mini-tag{border:1px solid var(--line);color:var(--muted-text);font-size:8px;letter-spacing:1.7px;padding:4px 7px;border-radius:3px;background:transparent}
+.banner-strip h2{font-family:Outfit,sans-serif;font-size:20px;font-weight:550;margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;line-height:1.3}
+.banner-strip h2>span{font-weight:300;opacity:.4}
+.banner-strip-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;color:var(--muted-text);margin-top:8px}
+.banner-strip .banner-divider{height:10px;width:1px;background:var(--line);margin:0 6px}
+.banner-strip-target{display:flex;align-items:center;gap:12px;flex-shrink:0}
+.banner-strip-target>span{font-size:9px;letter-spacing:1.2px;color:var(--muted-text)}
+.banner-strip-target>strong{font-family:Outfit,sans-serif;font-size:18px;font-weight:550}
+.banner-strip-target button{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--blue);font-weight:600;background:transparent;border:0;padding:4px 0}
+.banner-strip-target button:hover{color:#204fc3}
+
+/* --- Attention section moved above the block grid (full-width card) --- */
+.attention-section.attention-top{border-left:none;border-top:none;padding:16px 18px;border:1px solid var(--line);border-radius:7px;background:var(--surface);margin-bottom:28px;min-width:0}
+.attention-links{display:flex;flex-wrap:wrap;gap:2px 20px;padding-top:12px;border-top:1px solid var(--line);margin-top:6px}
+
+/* --- Sticky level column in the floor matrix + first column in list mode --- */
+.matrix-scroll .matrix-corner,.matrix-scroll .matrix-level{position:sticky;left:0;z-index:2;background:var(--page)}
+.tracker-list th:first-child,.tracker-list td:first-child{position:sticky;left:0;z-index:1}
+.tracker-list th:first-child{background:var(--soft)}
+.tracker-list td:first-child{background:var(--surface)}
+
+/* --- Drawer tabs: horizontal scroll on narrow screens instead of clipping --- */
+.drawer-tabs{overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
+.drawer-tabs::-webkit-scrollbar{display:none}
+.drawer-tabs button{flex-shrink:0}
+
+/* --- 44px stepper touch targets (BlockModal + point-template editors) --- */
+.stepper .icon-button{width:42px;min-width:42px;height:42px}
+
+/* --- Small helpers for the new hint lines --- */
+.page-hint{margin:-6px 0 18px}
+.checklist-empty{padding:6px 0 2px}

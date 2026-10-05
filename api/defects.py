@@ -39,6 +39,23 @@ def _label(defect: dict) -> str:
     return 'site-wide'
 
 
+async def _attach_assignee_names(docs: list[dict]) -> list[dict]:
+    """Batch-resolve assigned_to → assigned_to_name, mirroring the pattern
+    tasks store at write time. Names only — no new data exposure; every role
+    already sees worker names via the directory / workspace."""
+    ids = {d.get('assigned_to') for d in docs if d.get('assigned_to')}
+    names = {}
+    if ids:
+        found = await database().users.find(
+            {'id': {'$in': list(ids)}},
+            {'_id': 0, 'id': 1, 'name': 1}).to_list(1000)
+        names = {u['id']: u['name'] for u in found}
+    for d in docs:
+        aid = d.get('assigned_to')
+        d['assigned_to_name'] = names.get(aid, '') if aid else ''
+    return docs
+
+
 async def _history(defect_id: str, status: str, note: str, user: dict):
     entry = {'status': status, 'by_id': user['id'], 'by_name': user['name'],
              'at': now(), 'note': (note or '')[:1000]}
@@ -73,7 +90,7 @@ async def create_defect(pid: str, data: DefectIn,
         'created_at': now(), 'updated_at': now(),
     }
     await log(pid, 'defect', f'Defect reported · {_label(doc)} · {doc["title"]}', user)
-    return await save('defects', doc)
+    return (await _attach_assignee_names([await save('defects', doc)]))[0]
 
 
 @router.get('/projects/{pid}/defects', response_model=list[Record])
@@ -99,7 +116,8 @@ async def list_defects(pid: str, user: dict = Depends(get_current_user),
         clauses.append({'$or': [{'assigned_to': user['id']},
                                 {'reported_by.id': user['id']}]})
     filt = clauses[0] if len(clauses) == 1 else {'$and': clauses}
-    return await database().defects.find(filt, {'_id': 0}).sort('created_at', -1).to_list(5000)
+    docs = await database().defects.find(filt, {'_id': 0}).sort('created_at', -1).to_list(5000)
+    return await _attach_assignee_names(docs)
 
 
 @router.patch('/defects/{id}', response_model=Record)
@@ -125,7 +143,7 @@ async def edit_defect(id: str, data: DefectPatchIn,
         await log_change(defect['project_id'], 'defect',
                          f'Defect updated · {_label(defect)} · {defect["title"]}',
                          user, defect, await get('defects', id))
-    return await get('defects', id)
+    return (await _attach_assignee_names([await get('defects', id)]))[0]
 
 
 @router.post('/defects/{id}/assign', response_model=Record)
@@ -148,7 +166,7 @@ async def assign_defect(id: str, data: DefectAssignIn,
                  f'Defect assigned: {defect["title"]}',
                  f'{_label(defect)} · reported by {defect["reported_by"]["name"]}',
                  {'page': 'defects', 'id': id})
-    return await get('defects', id)
+    return (await _attach_assignee_names([await get('defects', id)]))[0]
 
 
 @router.post('/defects/{id}/transition', response_model=Record)
@@ -174,4 +192,4 @@ async def transition_defect(id: str, data: DefectTransitionIn,
                          {'page': 'defects', 'id': id})
     await log(defect['project_id'], 'defect',
               f'Defect {new} · {_label(defect)} · {defect["title"]}', user)
-    return await get('defects', id)
+    return (await _attach_assignee_names([await get('defects', id)]))[0]

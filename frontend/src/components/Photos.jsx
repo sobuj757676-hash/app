@@ -36,23 +36,24 @@ export function PhotoUpload({entityType,entityId,onUploaded,id}){
 
 /** Thumbnail gallery with lightbox + optional delete. */
 export function PhotoGallery({entityType,entityId,canDelete=false,refreshKey=0,id}){
- const {t}=useLanguage();const [photos,setPhotos]=useState([]),[lightbox,setLightbox]=useState(null);
- const load=()=>api.get('/photos',{params:{entity_type:entityType,entity_id:entityId}}).then(r=>setPhotos(r.data)).catch(()=>{});
+ const {t}=useLanguage();const [photos,setPhotos]=useState([]),[lightbox,setLightbox]=useState(null),[loadError,setLoadError]=useState(false);
+ const load=()=>{setLoadError(false);api.get('/photos',{params:{entity_type:entityType,entity_id:entityId}}).then(r=>setPhotos(r.data)).catch(()=>setLoadError(true));};
  // eslint-disable-next-line react-hooks/exhaustive-deps
  useEffect(()=>{load();},[entityType,entityId,refreshKey]);
  const remove=async p=>{
   if(!window.confirm(t('confirmDelete')))return;
   try{await api.delete(`/photos/${p.id}`);load();toast.success(t('saved'));}
-  catch(e){toast.error(errorText(e));}
+  catch(e){toast.error(errorText(e,t));}
  };
- if(!photos.length)return <Empty text={t('noRecords')}/>;
+ if(loadError)return <div className="photo-load-error" data-testid={id?`${id}-error`:'photo-gallery-error'}><span>{t('photosLoadFailed')}</span><button type="button" className="text-link" onClick={load}>{t('retry')}</button></div>;
+ if(!photos.length)return <Empty text={t('noPhotos')}/>;
  return <div className="photo-gallery" data-testid={id||'photo-gallery'}>
   {photos.map(p=><div key={p.id} className="photo-thumb" data-testid={`photo-${p.id}`}>
    <button type="button" onClick={()=>setLightbox(p)}><img src={p.thumb_url||p.url} alt={p.caption||''} loading="lazy"/></button>
    {canDelete&&<button type="button" className="icon-button photo-delete" data-testid={`photo-delete-${p.id}`} onClick={()=>remove(p)}><Trash2 size={15}/></button>}
   </div>)}
   {lightbox&&<div className="lightbox" data-testid="photo-lightbox" onClick={()=>setLightbox(null)}>
-   <img src={lightbox.url} alt={lightbox.caption||''}/>
+   <img src={lightbox.url} alt={lightbox.caption||''} onClick={e=>e.stopPropagation()}/>
    {lightbox.caption&&<p>{lightbox.caption}</p>}
    <button type="button" className="icon-button lightbox-close" onClick={()=>setLightbox(null)}><X size={20}/></button>
   </div>}

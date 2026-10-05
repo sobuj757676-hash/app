@@ -69,6 +69,9 @@ class BlockIn(BaseModel):
     first_unit: int = Field(default=401, ge=1, le=9999)
     room_mix: list[RoomMixIn] | None = None
 
+class BlockRenameIn(BaseModel):
+    name: str = Field(min_length=1, max_length=16, pattern=r'^[A-Za-z0-9 -]+$')
+
 class UnitIn(BaseModel):
     level: int = Field(ge=1, le=60)
     number: str = Field(min_length=1, max_length=10, pattern=r'^[A-Za-z0-9-]+$')

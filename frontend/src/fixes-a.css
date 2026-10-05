@@ -1,0 +1,12 @@
+/* fixes-a: targeted overrides for MEDIUM/LOW audit findings (app shell + auth).
+   Imported in App.js AFTER App.css so equal-specificity rules win over it. */
+
+/* Finding 1: App.css hides .theme-toggle below 760px — keep it visible on mobile
+   for night-shift phone users. .icon-button is inline-flex on desktop; restore that. */
+@media (max-width:760px){
+ .theme-toggle{display:inline-flex}
+}
+
+/* Finding 3: subtle "Sign out" text-button on the forced password-change card. */
+.force-signout{display:block;margin:14px auto 0;background:none;border:0;padding:6px 10px;color:var(--muted-text);font-size:12px;text-decoration:underline;cursor:pointer}
+.force-signout:hover{color:var(--text)}

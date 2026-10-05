@@ -4,8 +4,9 @@ import {useAuth} from '../lib/auth';
 import {useWorkspace} from '../lib/store';
 import {useLanguage} from '../lib/i18n';
 import {api,today,percent,errorText,fmtDate} from '../lib/api';
-import {PageTitle,Metric,ProgressBar,StatusBadge,Empty} from '../components/Common';
+import {PageTitle,Metric,ProgressBar,StatusBadge,Empty,Action} from '../components/Common';
 import {DefectDrawer} from '../components/DefectDrawer';
+import {DefectReportModal} from '../components/DefectReportModal';
 import {DefectChip,mayMove} from './Tasks';
 import {toast} from 'sonner';
 
@@ -13,17 +14,23 @@ const TASK_NEXT={todo:['in_progress'],in_progress:['todo','done'],done:[],cancel
 const DEFECT_NEXT={assigned:['in_progress'],in_progress:['rectified']};
 const LIVE_DEFECT=['open','assigned','in_progress','rectified'];
 
+const isLive=i=>i.kind==='task'?!['done','cancelled'].includes(i.status):LIVE_DEFECT.includes(i.status);
+const isOverdue=i=>!!(i.due_date&&i.due_date<today()&&isLive(i));
+
+// Due-date line with a red clock + "Overdue" badge when past due (same language as Tasks.jsx).
+function DueLine({t,date,overdue}){return <span className={`mono due-line${overdue?' overdue-text':''}`}><Clock3 size={12}/>{date}{overdue&&<b className="overdue-badge">{t('overdue')}</b>}</span>;}
+
 export default function WorkerHome(){
  const {t,lang}=useLanguage();const {user}=useAuth();const {data,refresh,mutate}=useWorkspace();
  const [me,setMe]=useState(null),[status,setStatus]=useState('present'),[hours,setHours]=useState(8),[busy,setBusy]=useState(false);
- const [filter,setFilter]=useState('all'),[defectId,setDefectId]=useState(null);
+ const [filter,setFilter]=useState('all'),[defectId,setDefectId]=useState(null),[report,setReport]=useState(false);
  const [moveBusy,setMoveBusy]=useState([]);
  useEffect(()=>{api.get('/workers/me').then(r=>{setMe(r.data);if(r.data.today_attendance){setStatus(r.data.today_attendance.status);setHours(r.data.today_attendance.hours);}}).catch(()=>{});},[]);
  const marked=me?.today_attendance;
  const submit=async()=>{
   setBusy(true);
   try{const {data:d}=await api.put('/workers/me/attendance',{status,hours:Number(hours)||0});setMe(m=>({...m,today_attendance:d}));toast.success(t('attendanceMarked'));refresh();}
-  catch(e){toast.error(errorText(e));}
+  catch(e){toast.error(errorText(e,t));}
   finally{setBusy(false);}
  };
  const moveTask=async(task,next)=>{
@@ -39,10 +46,8 @@ export default function WorkerHome(){
  const myTasks=(data.tasks||[]).filter(x=>x.assigned_to===user?.id&&!['done','cancelled'].includes(x.status)).map(x=>({...x,kind:'task'}));
  const myDefects=(data.defects||[]).filter(d=>d.assigned_to===user?.id&&LIVE_DEFECT.includes(d.status)).map(d=>({...d,kind:'defect'}));
  const urgency=i=>{
-  const live=i.kind==='task'?!['done','cancelled'].includes(i.status):LIVE_DEFECT.includes(i.status);
-  const overdue=i.due_date&&i.due_date<today()&&live;
-  if(overdue)return 0;
-  if(i.kind==='defect'&&i.severity==='critical'&&live)return 0;
+  if(isOverdue(i))return 0;
+  if(i.kind==='defect'&&i.severity==='critical'&&isLive(i))return 0;
   return 1;
  };
  const byDue=(a,b)=>{
@@ -72,20 +77,20 @@ export default function WorkerHome(){
    <div className="worker-progress"><ProgressBar id="worker-progress-bar" value={percent(data.units)}/></div>
   </section>
   <section className="worker-tasks" data-testid="worker-work">
-   <h2><ListChecks size={18}/>{t('myWork')}</h2>
-   <p className="section-sub">{t('myWorkSub')}</p>
+   <div className="worker-tasks-head"><div><h2><ListChecks size={18}/>{t('myWork')}</h2><p className="section-sub">{t('myWorkSub')}</p></div><Action id="worker-report-defect" onClick={()=>setReport(true)}>{t('reportDefect')}</Action></div>
+   <p className="sort-hint">{t('workSortHint')}</p>
    <div className="filter-chips" data-testid="work-filter">
     {[['all',t('all')],['task',t('tasks')],['defect',t('defects')]].map(([k,label])=><button key={k} type="button" data-testid={`work-filter-${k}`} className={filter===k?'active':''} onClick={()=>setFilter(k)}>{label}</button>)}
    </div>
    {work.length?work.map(i=>i.kind==='task'
     ?<div key={i.id} className="worker-task" data-testid={`worker-task-${i.id}`}>
-      <div><strong>{i.title}</strong><small>{i.unit_label||''}{i.due_date?` · ${i.due_date}`:''}</small></div>
+      <div><strong>{i.title}</strong>{i.unit_label&&<small>{i.unit_label}</small>}{i.due_date&&<DueLine t={t} date={i.due_date} overdue={isOverdue(i)}/>}</div>
       {i.defect&&<DefectChip defect={i.defect} onOpen={()=>setDefectId(i.defect.id)}/>}
       <StatusBadge value={i.status} id={`worker-task-status-${i.id}`}/>
       <div className="worker-task-actions">{(TASK_NEXT[i.status]||[]).filter(s=>mayMove(user,i,s)).map(s=><button key={s} type="button" data-testid={`worker-task-${s}-${i.id}`} className="attend-submit small" disabled={moveBusy.includes(i.id)} onClick={()=>moveTask(i,s)}>{t(s==='todo'?'todo':s)}</button>)}</div>
      </div>
     :<div key={i.id} className="worker-task worker-defect" data-testid={`worker-defect-${i.id}`}>
-      <div><strong><OctagonAlert size={14}/> {i.title}</strong><small>{i.block?`Blk ${i.block} · #${String(i.level).padStart(2,'0')}-${i.number}`:''}{i.due_date?` · ${i.due_date}`:''}</small></div>
+      <div><strong><OctagonAlert size={14}/> {i.title}</strong>{i.block&&<small>{`Blk ${i.block} · #${String(i.level).padStart(2,'0')}-${i.number}`}</small>}{i.due_date&&<DueLine t={t} date={i.due_date} overdue={isOverdue(i)}/>}</div>
       <span className={`severity-tag ${i.severity}`}>{t(i.severity)}</span>
       <StatusBadge value={i.status} id={`worker-defect-status-${i.id}`}/>
       <div className="worker-task-actions">
@@ -96,5 +101,6 @@ export default function WorkerHome(){
    ):<Empty text={t('noWork')}/>}
   </section>
   {defectId&&<DefectDrawer defectId={defectId} onClose={()=>setDefectId(null)}/>}
+  {report&&<DefectReportModal onClose={()=>setReport(false)}/>}
  </div>;
 }

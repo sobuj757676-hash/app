@@ -10,6 +10,7 @@ import {PhotoUpload,PhotoGallery} from './Photos';
 import {TaskModal} from './TaskModal';
 import {toast} from 'sonner';
 import {useNavigate} from 'react-router-dom';
+import '../fixes-c.css';
 
 const TRANSITIONS={open:['assigned','cancelled'],assigned:['in_progress','open','cancelled'],in_progress:['rectified','assigned','cancelled'],rectified:['verified','in_progress','cancelled'],verified:[],cancelled:[]};
 const mayTransition=(user,defect,next)=>{
@@ -23,16 +24,18 @@ const mayTransition=(user,defect,next)=>{
 export const DefectDrawer=({defectId,onClose})=>{
  const {t,lang}=useLanguage();const {data,mutate,setSelectedUnit}=useWorkspace();const {user}=useAuth();const navigate=useNavigate();
  const [directory,setDirectory]=useState([]),[assignee,setAssignee]=useState(''),[busy,setBusy]=useState(false),[note,setNote]=useState(''),[photoTick,setPhotoTick]=useState(0);
- const [linkedTasks,setLinkedTasks]=useState([]),[taskModal,setTaskModal]=useState(false);
+ const [linkedTasks,setLinkedTasks]=useState([]),[taskModal,setTaskModal]=useState(false),[linkError,setLinkError]=useState(false);
  const defect=data?.defects.find(d=>d.id===defectId);
  useEffect(()=>{setNote('');setAssignee('');},[defectId]);
  useEffect(()=>{if(defect&&['admin','manager','engineer','supervisor'].includes(user?.role))api.get('/auth/directory').then(r=>setDirectory(r.data)).catch(()=>{});},[defect,user]);
- useEffect(()=>{if(defect)api.get(`/defects/${defect.id}/tasks`).then(r=>setLinkedTasks(r.data)).catch(()=>setLinkedTasks([]));},[defect]);
+ const loadLinked=()=>{if(!defect)return;setLinkError(false);api.get(`/defects/${defect.id}/tasks`).then(r=>setLinkedTasks(r.data)).catch(()=>setLinkError(true));};
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ useEffect(()=>{setLinkedTasks([]);loadLinked();},[defect]);
  if(!defect)return null;
  const unit=defect.unit_id?data.units.find(u=>u.id===defect.unit_id):null;
  const canAssign=['admin','manager','engineer','supervisor'].includes(user?.role);
  const nexts=(TRANSITIONS[defect.status]||[]).filter(s=>mayTransition(user,defect,s));
- const assigneeName=directory.find(u=>u.id===defect.assigned_to)?.name;
+ const assigneeName=defect.assigned_to_name||directory.find(u=>u.id===defect.assigned_to)?.name;
  const doTransition=async s=>{
   setBusy(true);
   try{await mutate('post',`/defects/${defect.id}/transition`,{status:s,note});setNote('');toast.success(t('saved'));}
@@ -45,7 +48,7 @@ export const DefectDrawer=({defectId,onClose})=>{
  };
  return <><Sheet open={!!defect} onOpenChange={v=>!v&&onClose()}><SheetContent className="unit-drawer defect-drawer" data-testid="defect-drawer">
   <SheetHeader>
-   <div className="drawer-eyebrow">{defect.block?`Blk ${defect.block} · #${String(defect.level).padStart(2,'0')}-${defect.number}`:t('defects')}</div>
+   <div className="drawer-eyebrow">{defect.block?`${t('blk')} ${defect.block} · #${String(defect.level).padStart(2,'0')}-${defect.number}`:t('defects')}</div>
    <SheetTitle data-testid="defect-drawer-title">{defect.title}</SheetTitle>
    <SheetDescription>{t(defect.category)} · {t(defect.severity)}</SheetDescription>
   </SheetHeader>
@@ -75,7 +78,9 @@ export const DefectDrawer=({defectId,onClose})=>{
     :null}
   </div>
   <div className="drawer-section" data-testid="defect-linked-tasks"><h3><ListChecks size={16}/>{t('linkedTasks')} <span>{linkedTasks.length}</span></h3>
-   {linkedTasks.length?linkedTasks.map(x=><button key={x.id} type="button" className="linked-task-row" data-testid={`linked-task-${x.id}`} onClick={()=>{onClose();navigate('/tasks');}}>
+   {linkError
+    ?<div className="inline-error" data-testid="linked-tasks-error"><span>{t('linkedTasksLoadFailed')}</span><button type="button" className="text-link" onClick={loadLinked}>{t('retry')}</button></div>
+    :linkedTasks.length?linkedTasks.map(x=><button key={x.id} type="button" className="linked-task-row" data-testid={`linked-task-${x.id}`} onClick={()=>{onClose();navigate(`/tasks?open=${x.id}`);}}>
     <strong>{x.title}</strong><span className="linked-task-meta"><StatusBadge value={x.status} id={`linked-task-status-${x.id}`}/><small>{x.assigned_to_name||x.assigned_to||t('unassigned')}</small></span>
    </button>):<Empty text={t('noTasks')}/>}
    {canAssign&&<Action id="defect-followup-task" icon={Plus} secondary onClick={()=>setTaskModal(true)}>{t('followupTask')}</Action>}
@@ -84,6 +89,6 @@ export const DefectDrawer=({defectId,onClose})=>{
    <div className="unit-history">{defect.history?.length?defect.history.slice().reverse().map((h,i)=><div key={i} data-testid={`defect-history-${i}`}><span className="history-dot"/><strong>{t(h.status)}</strong><p>{h.note||'—'}</p><small>{h.by_name}</small><time>{fmtDateTime(h.at,lang)}</time></div>):<Empty text={t('noHistory')}/>}</div>
   </div>
  </SheetContent></Sheet>
- {taskModal&&<TaskModal open defectId={defect.id} requireAssignee={false} onClose={()=>{setTaskModal(false);api.get(`/defects/${defect.id}/tasks`).then(r=>setLinkedTasks(r.data)).catch(()=>{});}}/>}
+ {taskModal&&<TaskModal open defectId={defect.id} requireAssignee={false} onClose={()=>{setTaskModal(false);loadLinked();}}/>}
  </>;
 };

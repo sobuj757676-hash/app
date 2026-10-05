@@ -3,6 +3,7 @@ import {Building2,ClipboardCheck,Zap,Lock,Globe,ChevronRight} from 'lucide-react
 import {useWorkspace} from '../lib/store';
 import {useLanguage} from '../lib/i18n';
 import {PageTitle} from '../components/Common';
+import {ROOM_TYPES} from '../components/BlockModal';
 
 const LANG_LABEL={en:'English',bn:'বাংলা',zh:'中文'};
 
@@ -16,7 +17,7 @@ export default function Settings(){
   ]},
   {label:t('quality'),rows:[
    {icon:ClipboardCheck,title:t('rtoChecklist'),summary:`${checklist.length} ${t('items')}`,to:'/settings/rto-checklist',id:'menu-rto'},
-   {icon:Zap,title:t('pointTemplates'),summary:`5 ${t('roomTypes')}`,to:'/settings/point-templates',id:'menu-templates'},
+   {icon:Zap,title:t('pointTemplates'),summary:`${ROOM_TYPES.length} ${t('roomTypes')}`,to:'/settings/point-templates',id:'menu-templates'},
   ]},
   {label:t('account'),rows:[
    {icon:Lock,title:t('changePassword'),summary:'',to:'/settings/password',id:'menu-password'},
