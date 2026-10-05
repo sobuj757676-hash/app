@@ -1,5 +1,5 @@
 import {useNavigate} from 'react-router-dom';
-import {Building2,TrendingUp,ClipboardCheck,Users,ArrowUpRight,MapPin,CalendarDays,Check,Activity,OctagonAlert,ListChecks,Package} from 'lucide-react';
+import {Building2,TrendingUp,ClipboardCheck,Users,ArrowUpRight,MapPin,CalendarDays,Check,Activity,OctagonAlert,ListChecks,Package,Clock3} from 'lucide-react';
 import {useLanguage} from '../lib/i18n';
 import {useWorkspace} from '../lib/store';
 import {percent,today} from '../lib/api';
