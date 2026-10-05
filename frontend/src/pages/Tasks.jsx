@@ -9,7 +9,7 @@ import {assigneeNames,isAssigned} from '../lib/planTasks';
 import {PageTitle,Metric,Action,StatusBadge,Empty,FormModal} from '../components/Common';
 import {DefectDrawer} from '../components/DefectDrawer';
 import {TaskModal} from '../components/TaskModal';
-import PlanDay from './PlanDay';
+import PlanDay,{planScopeText} from './PlanDay';
 import {toast} from 'sonner';
 
 const PRIS=['low','medium','high','urgent'];
@@ -38,7 +38,7 @@ function TaskCard({task,onOpenDefect,onOpenPlan,highlight}){
   <strong data-testid={`task-title-${task.id}`}>{task.title}</strong>
   {task.description&&<p className="task-desc">{task.description}</p>}
   {task.defect&&<div className="task-defect-row"><DefectChip defect={task.defect} onOpen={()=>onOpenDefect&&onOpenDefect(task.defect.id)}/></div>}
-  <div className="task-meta"><span>{assigneeNames(task,t)}</span>{task.unit_label&&<span>{task.unit_label}</span>}{task.due_date&&<span className={`mono ${overdue?'overdue-text':''}`}><Clock3 size={12}/>{task.due_date}</span>}{task.kind==='planned'&&task.plan_date&&<button type="button" className="text-link" data-testid={`task-plan-link-${task.id}`} onClick={()=>onOpenPlan&&onOpenPlan(task.plan_date)}>{t('viewPlan')} · {task.plan_date}</button>}</div>
+  <div className="task-meta"><span>{assigneeNames(task,t)}</span>{task.kind==='planned'&&task.scope&&<span>{planScopeText(task,data,t)}</span>}{task.unit_label&&<span>{task.unit_label}</span>}{task.due_date&&<span className={`mono ${overdue?'overdue-text':''}`}><Clock3 size={12}/>{task.due_date}</span>}{task.kind==='planned'&&task.plan_date&&<button type="button" className="text-link" data-testid={`task-plan-link-${task.id}`} onClick={()=>onOpenPlan&&onOpenPlan(task.plan_date)}>{t('viewPlan')} · {task.plan_date}</button>}</div>
   {nexts.length>0&&<div className="transition-buttons">{nexts.map(s=><button key={s} type="button" className="table-action" data-testid={`task-to-${s}-${task.id}`} disabled={busy} onClick={()=>move(s)}>{t(s==='todo'?'todo':s)}</button>)}</div>}
  </div>;
 }
