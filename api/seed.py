@@ -1,7 +1,17 @@
 from datetime import datetime, timezone, timedelta
+import copy
 import random
 
 STAGES = ['Slab PVC', 'Casting complete', 'Point hacking', 'Wire pulling', 'GI/PVC & gang boxes', 'RTO approval', 'Plastering', 'Accessories fitting', 'Insulation testing']
+
+# Default workflow stages. Stored per project as `workflow_stages` (ordered
+# list of {id, name, name_key, requires_rto}); seeded onto any project missing
+# it (same backfill pattern as the RTO checklist). The RTO approval gate lives
+# on index 5; name_key keeps the built-in bn/zh translations working.
+DEFAULT_WORKFLOW_STAGES = [
+    {'id': f's{i}', 'name': name, 'name_key': f'stage{i}', 'requires_rto': i == 5}
+    for i, name in enumerate(STAGES)
+]
 
 # Default RTO readiness checklist template. Stored per project as
 # `rto_checklist_template`; seeded onto any project missing it so older
@@ -151,7 +161,7 @@ async def initialize(db):
     await db.users.create_index('phone', unique=True, sparse=True)
     await db.defects.create_index([('project_id', 1), ('status', 1)])
     await db.defects.create_index([('project_id', 1), ('assigned_to', 1)])
-    await db.tasks.create_index([('project_id', 1), ('assigned_to', 1), ('status', 1)])
+    await db.tasks.create_index([('project_id', 1), ('assignees', 1), ('status', 1)])
     await db.photos.create_index([('project_id', 1), ('entity_type', 1), ('entity_id', 1)])
     await db.notifications.create_index([('user_id', 1), ('read', 1), ('created_at', -1)])
     await _seed_admin(db)
@@ -164,11 +174,28 @@ async def initialize(db):
     await db.projects.update_many(
         {'point_templates': {'$exists': False}},
         {'$set': {'point_templates': DEFAULT_POINT_TEMPLATES}})
+    # Backfill workflow stages onto projects created before dynamic stages.
+    await db.projects.update_many(
+        {'workflow_stages': {'$exists': False}},
+        {'$set': {'workflow_stages': copy.deepcopy(DEFAULT_WORKFLOW_STAGES)}})
+    # Migrate legacy tasks: assigned_to -> assignees:[assigned_to],
+    # assigned_to_name -> assignee_names:[name]; old keys dropped.
+    legacy = await db.tasks.find(
+        {'assignees': {'$exists': False}},
+        {'_id': 0, 'id': 1, 'assigned_to': 1, 'assigned_to_name': 1}).to_list(100000)
+    for t in legacy:
+        aid = t.get('assigned_to')
+        aname = (t.get('assigned_to_name') or '').strip()
+        await db.tasks.update_one(
+            {'id': t['id']},
+            {'$set': {'assignees': [aid] if aid else [],
+                      'assignee_names': [aname] if aname else []},
+             '$unset': {'assigned_to': '', 'assigned_to_name': ''}})
     if await db.projects.count_documents({}):
         return
     now = datetime.now(timezone.utc)
     today = now.astimezone(__import__('zoneinfo').ZoneInfo('Asia/Singapore')).date().isoformat()
-    project = {'id': 'rail-garden', 'name': 'Rail Garden', 'location': 'Choa Chu Kang, Singapore', 'company': 'VoltCraft Electrical', 'budget': 480000, 'target_date': (now + timedelta(days=180)).date().isoformat(), 'rto_checklist_template': DEFAULT_RTO_CHECKLIST, 'point_templates': DEFAULT_POINT_TEMPLATES, 'sample': True, 'created_at': now.isoformat()}
+    project = {'id': 'rail-garden', 'name': 'Rail Garden', 'location': 'Choa Chu Kang, Singapore', 'company': 'VoltCraft Electrical', 'budget': 480000, 'target_date': (now + timedelta(days=180)).date().isoformat(), 'rto_checklist_template': DEFAULT_RTO_CHECKLIST, 'point_templates': DEFAULT_POINT_TEMPLATES, 'workflow_stages': copy.deepcopy(DEFAULT_WORKFLOW_STAGES), 'sample': True, 'created_at': now.isoformat()}
     await db.projects.insert_one(project)
     rng = random.Random(46)
     units, blocks, inspections, tests = [], [], [], []

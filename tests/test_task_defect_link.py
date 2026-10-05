@@ -76,7 +76,7 @@ def run(c):
 
     print('\n[create with defect_id]')
     r = c.post(f'/api/projects/{pid}/tasks', headers=tok('supervisor'),
-               json={'title': 'Order gang boxes', 'assigned_to': me_worker['id'],
+               json={'title': 'Order gang boxes', 'assignees': [me_worker['id']],
                      'defect_id': d1})
     check('create task with valid defect_id', r.status_code == 200, r.text[:160])
     t1 = r.json()
@@ -84,18 +84,18 @@ def run(c):
           t1.get('defect_id') == d1 and t1.get('defect', {}).get('title') == 'Loose conduit in riser'
           and t1['defect']['severity'] == 'major', str(t1.get('defect')))
     r = c.post(f'/api/projects/{pid}/tasks', headers=tok('supervisor'),
-               json={'title': 'Bad link', 'assigned_to': me_worker['id'], 'defect_id': 'nope'})
+               json={'title': 'Bad link', 'assignees': [me_worker['id']], 'defect_id': 'nope'})
     check('invalid defect_id -> 400', r.status_code == 400, r.text[:120])
     r = c.post(f'/api/projects/{pid}/tasks', headers=tok('supervisor'),
-               json={'title': 'Foreign link', 'assigned_to': me_worker['id'], 'defect_id': 'foreign-defect'})
+               json={'title': 'Foreign link', 'assignees': [me_worker['id']], 'defect_id': 'foreign-defect'})
     check('cross-project defect_id -> 400', r.status_code == 400, r.text[:120])
     r = c.post(f'/api/projects/{pid}/tasks', headers=tok('worker'),
-               json={'title': 'Worker task', 'assigned_to': me_worker['id']})
+               json={'title': 'Worker task', 'assignees': [me_worker['id']]})
     check('worker cannot create tasks', r.status_code == 403)
 
     print('\n[follow-up endpoint]')
     r = c.post(f'/api/defects/{d1}/tasks', headers=tok('supervisor'),
-               json={'title': 'Rectify conduit', 'assigned_to': me_worker['id'], 'priority': 'high'})
+               json={'title': 'Rectify conduit', 'assignees': [me_worker['id']], 'priority': 'high'})
     check('POST /defects/{id}/tasks creates', r.status_code == 200, r.text[:160])
     t2 = r.json()
     check('follow-up has defect project_id + link',
@@ -105,7 +105,7 @@ def run(c):
           any(n['kind'] == 'task_assigned' and t2['id'] in str(n.get('link', {})) for n in r.json()))
     r = c.post(f'/api/defects/{d1}/tasks', headers=tok('supervisor'),
                json={'title': 'Unassigned follow-up'})
-    check('follow-up without assignee works', r.status_code == 200 and r.json()['assigned_to'] is None,
+    check('follow-up without assignee works', r.status_code == 200 and r.json()['assignees'] == [],
           r.text[:160])
     t3 = r.json()['id']
     r = c.post(f'/api/defects/{d1}/tasks', headers=tok('worker'), json={'title': 'no'})

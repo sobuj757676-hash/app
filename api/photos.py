@@ -57,7 +57,7 @@ async def _check_entity(entity_type: str, entity_id: str, user: dict, write: boo
         return defect['project_id'], defect['title']
     if entity_type == 'task':
         task = await get('tasks', entity_id)
-        if is_worker(user) and task.get('assigned_to') != user['id']:
+        if is_worker(user) and user['id'] not in (task.get('assignees') or []):
             raise HTTPException(403, 'You do not have permission for this action')
         if write and role == 'viewer':
             raise HTTPException(403, 'You do not have permission for this action')

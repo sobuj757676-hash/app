@@ -1,12 +1,13 @@
 import uuid
+import copy
 import csv
 import io
 import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import Response
-from models import Record, Workspace, ProjectIn, BlockIn, BlockRenameIn, UnitIn, AdvanceIn, InspectionIn, DecisionIn, PointIn, TestIn, RtoChecklistIn, PointTemplatesIn
-from seed import STAGES, points_for, DEFAULT_RTO_CHECKLIST, DEFAULT_POINT_TEMPLATES, points_for_template, ROOM_TYPES, POINT_KINDS
+from models import Record, Workspace, ProjectIn, BlockIn, BlockRenameIn, UnitIn, AdvanceIn, InspectionIn, DecisionIn, PointIn, TestIn, RtoChecklistIn, PointTemplatesIn, WorkflowStagesIn, BulkAdvanceIn
+from seed import points_for, DEFAULT_RTO_CHECKLIST, DEFAULT_POINT_TEMPLATES, points_for_template, ROOM_TYPES, POINT_KINDS, DEFAULT_WORKFLOW_STAGES
 from auth import get_current_user, require_roles, OPS_ROLES, DECIDE_ROLES, MONEY_ROLES
 
 router = APIRouter()
@@ -52,12 +53,35 @@ async def save(collection, doc):
     await database()[collection].insert_one(doc.copy())
     return doc
 
+async def _project_with_stages(pid: str) -> dict:
+    """Project record with workflow_stages guaranteed present.
+
+    Migration on read: legacy projects get the default 9 stages written back,
+    so every read path (workspace, stage endpoints, unit advances) sees a list.
+    """
+    project = await get('projects', pid)
+    if not project.get('workflow_stages'):
+        stages = copy.deepcopy(DEFAULT_WORKFLOW_STAGES)
+        await database().projects.update_one({'id': pid}, {'$set': {'workflow_stages': stages}})
+        project['workflow_stages'] = stages
+    return project
+
+def _rto_index(stages: list) -> int:
+    """Index of the stage carrying the RTO approval gate (-1 if none)."""
+    for i, s in enumerate(stages or []):
+        if s.get('requires_rto'):
+            return i
+    return -1
+
 @router.get('/')
 async def health(): return {'status': 'ok', 'app': 'VoltCraft'}
 
 @router.get('/projects', response_model=list[Record])
 async def projects(user: dict = Depends(get_current_user)):
     docs = await database().projects.find({}, {'_id': 0}).to_list(1000)
+    for i, d in enumerate(docs):
+        if not d.get('workflow_stages'):
+            docs[i] = await _project_with_stages(d['id'])
     if is_worker(user):
         for d in docs:
             d.pop('budget', None)
@@ -70,6 +94,8 @@ async def create_project(data: ProjectIn, user: dict = Depends(require_roles(*MO
         payload['rto_checklist_template'] = DEFAULT_RTO_CHECKLIST
     if not payload.get('point_templates'):
         payload['point_templates'] = DEFAULT_POINT_TEMPLATES
+    if not payload.get('workflow_stages'):
+        payload['workflow_stages'] = copy.deepcopy(DEFAULT_WORKFLOW_STAGES)
     doc = await save('projects', {'id': uid(), **payload, 'sample': False, 'created_at': now()})
     await log(doc['id'], 'project', f'Project created · {data.name}', user)
     return doc
@@ -144,12 +170,123 @@ async def set_point_templates(pid: str, data: PointTemplatesIn,
     await log_change(pid, 'project', 'Point templates updated', user, before, after)
     return {'templates': merged}
 
+@router.get('/projects/{pid}/stages')
+async def get_stages(pid: str, user: dict = Depends(get_current_user)):
+    """Ordered workflow stage list. Any authenticated role may read."""
+    project = await _project_with_stages(pid)
+    return project['workflow_stages']
+
+@router.put('/projects/{pid}/stages')
+async def set_stages(pid: str, data: WorkflowStagesIn,
+                     user: dict = Depends(require_roles('admin', 'manager'))):
+    """Replace the workflow stage list. Deleting a stage at index i is rejected
+    (400) when any unit sits at or past i; reordering is allowed but the
+    response reports how many units now point at a different stage."""
+    project = await _project_with_stages(pid)
+    old = project['workflow_stages']
+    new = [s.model_dump() for s in data.stages]
+    ids = [s['id'] for s in new]
+    if len(set(ids)) != len(ids):
+        raise HTTPException(400, 'Stage ids must be unique')
+    new_ids = set(ids)
+    for i, s in enumerate(old):
+        if s['id'] not in new_ids:
+            n = await database().units.count_documents({'project_id': pid, 'stage': {'$gte': i}})
+            if n:
+                raise HTTPException(400, f"Cannot remove stage '{s['name']}' — {n} unit(s) are at or past it")
+    affected = 0
+    old_at = {i: s['id'] for i, s in enumerate(old)}
+    units = await database().units.find({'project_id': pid}, {'_id': 0, 'stage': 1}).to_list(100000)
+    for u in units:
+        st = u.get('stage', 0)
+        if st < len(new) and old_at.get(st) != new[st]['id']:
+            affected += 1
+    before = await get('projects', pid)
+    await database().projects.update_one({'id': pid}, {'$set': {'workflow_stages': new}})
+    after = await get('projects', pid)
+    await log_change(pid, 'project', 'Workflow stages updated', user, before, after)
+    return {'stages': new, 'affected_units': affected}
+
+@router.get('/projects/{pid}/stage-groups')
+async def stage_groups(pid: str, user: dict = Depends(require_roles(*OPS_ROLES))):
+    """Derived (block, level, stage) groups for the daily work plan. No
+    persistence: remaining_units = units currently AT that stage (work to do)."""
+    project = await _project_with_stages(pid)
+    stages = project['workflow_stages']
+    units = await database().units.find(
+        {'project_id': pid},
+        {'_id': 0, 'id': 1, 'block_id': 1, 'block': 1, 'level': 1, 'number': 1, 'stage': 1}).to_list(100000)
+    by_bl: dict = {}
+    for u in units:
+        by_bl.setdefault((u.get('block_id', ''), u.get('block', ''), u.get('level', 0)), []).append(u)
+    groups = []
+    for (block_id, block, level), us in sorted(by_bl.items(), key=lambda kv: (kv[0][1], kv[0][2])):
+        at_stage: dict = {}
+        for u in us:
+            at_stage.setdefault(u.get('stage', 0), []).append(u)
+        for si in sorted(at_stage):
+            if si < len(stages):
+                stage_id, stage_name = stages[si]['id'], stages[si]['name']
+                stage_name_key = stages[si].get('name_key')
+            else:
+                stage_id, stage_name, stage_name_key = f's{si}', f'Stage {si + 1}', None
+            rem = sorted(at_stage[si], key=lambda u: str(u.get('number', '')))
+            groups.append({
+                'block_id': block_id, 'block': block, 'level': level,
+                'stage_index': si, 'stage_id': stage_id,
+                'stage_name': stage_name, 'stage_name_key': stage_name_key,
+                'total_units': len(us), 'remaining_units': len(rem),
+                'unit_ids': [u['id'] for u in rem],
+            })
+    return groups
+
+@router.post('/projects/{pid}/units/bulk-advance')
+async def bulk_advance(pid: str, data: BulkAdvanceIn,
+                       user: dict = Depends(require_roles(*OPS_ROLES))):
+    """Advance many units to a target stage at once. The RTO gate is enforced
+    per unit: a unit may not pass a requires_rto stage without RTO approval.
+    Returns per-unit results; failures never block the rest."""
+    project = await _project_with_stages(pid)
+    stages = project['workflow_stages']
+    if data.to_stage >= len(stages):
+        raise HTTPException(400, f'to_stage must be below {len(stages)}')
+    results = []
+    for unit_id in dict.fromkeys(data.unit_ids):
+        try:
+            unit = await get('units', unit_id)
+        except HTTPException:
+            results.append({'unit_id': unit_id, 'ok': False, 'error': 'Unit not found'})
+            continue
+        if unit.get('project_id') != pid:
+            results.append({'unit_id': unit_id, 'ok': False, 'error': 'Unit does not belong to this project'})
+            continue
+        s = unit.get('stage', 0)
+        if s >= data.to_stage:
+            results.append({'unit_id': unit_id, 'ok': False, 'error': 'Unit is already at or past the target stage'})
+            continue
+        gated = next((k for k in range(s, data.to_stage)
+                      if stages[k].get('requires_rto') and unit.get('rto') != 'approved'), None)
+        if gated is not None:
+            results.append({'unit_id': unit_id, 'ok': False,
+                            'error': f"RTO approval required before leaving '{stages[gated]['name']}'"})
+            continue
+        await database().units.update_one(
+            {'id': unit_id},
+            {'$set': {'stage': data.to_stage, 'sample': False, 'updated_at': now()},
+             '$push': {'history': {'stage': s, 'to_stage': data.to_stage, 'note': 'Bulk advance',
+                                   'by': user['name'], 'at': now()}}})
+        results.append({'unit_id': unit_id, 'ok': True})
+    ok_n = sum(1 for r in results if r['ok'])
+    await log(pid, 'stage',
+              f'Bulk advance → {stages[data.to_stage]["name"]} · {ok_n}/{len(results)} units', user)
+    return {'results': results}
+
 PAGINATED = ('units', 'attendance', 'movements')
 
 @router.get('/projects/{pid}/workspace', response_model=Workspace)
 async def workspace(pid: str, user: dict = Depends(get_current_user),
                     page: int = Query(1, ge=1), page_size: int | None = Query(None, ge=1, le=1000)):
-    project = await get('projects', pid)
+    project = await _project_with_stages(pid)
     if is_worker(user):
         project = {**project}
         project.pop('budget', None)
@@ -180,7 +317,7 @@ async def workspace(pid: str, user: dict = Depends(get_current_user),
         result['defects'] = [d for d in result['defects']
                              if d.get('assigned_to') == user['id']
                              or d.get('reported_by', {}).get('id') == user['id']]
-        result['tasks'] = [t for t in result['tasks'] if t.get('assigned_to') == user['id']]
+        result['tasks'] = [t for t in result['tasks'] if user['id'] in (t.get('assignees') or [])]
     # Embed linked-defect summaries so task cards / worker queue can show defect chips.
     from tasks import _attach_defects
     result['tasks'] = await _attach_defects(result['tasks'])
@@ -306,22 +443,24 @@ async def reset_sample(id: str, user: dict = Depends(require_roles(*OPS_ROLES)))
 @router.post('/units/{id}/advance', response_model=Record)
 async def advance(id: str, data: AdvanceIn, user: dict = Depends(require_roles(*OPS_ROLES))):
     unit = await get('units', id)
+    stages = (await _project_with_stages(unit['project_id']))['workflow_stages']
+    last = len(stages) - 1
     stage = unit['stage']
     if stage != data.expected_stage: raise HTTPException(409, 'Unit changed. Refresh and retry.')
-    if stage >= 9: raise HTTPException(400, 'Unit already complete')
-    if stage == 5: raise HTTPException(400, 'RTO approval required before plastering')
+    if stage >= len(stages): raise HTTPException(400, 'Unit already complete')
+    if stages[stage].get('requires_rto'): raise HTTPException(400, 'RTO approval required before advancing')
     # Phase 2: a critical defect blocks any stage advancement until verified/cancelled.
     blocker = await database().defects.find_one(
         {'unit_id': id, 'severity': 'critical', 'status': {'$nin': ['verified', 'cancelled']}},
         {'_id': 0, 'title': 1})
     if blocker: raise HTTPException(400, f"Blocked by critical defect: {blocker['title']}")
-    if stage == 8:
+    if stage == last:
         tests = await database().tests.find({'unit_id': id}, {'_id': 0}).sort('created_at', 1).to_list(10000)
         latest = {t['point_id']: t for t in tests}
         if not unit['points'] or any(latest.get(p['id'], {}).get('result') != 'pass' for p in unit['points']): raise HTTPException(400, 'A passing test is required for every point')
     update = await database().units.update_one({'id': id, 'stage': stage}, {'$set': {'stage': stage+1, 'sample': False, 'updated_at': now()}, '$push': {'history': {'stage': stage, 'note': data.note, 'at': now()}}})
     if not update.modified_count: raise HTTPException(409, 'Unit changed. Refresh and retry.')
-    await log(unit['project_id'], 'stage', f'Blk {unit["block"]} · #{unit["level"]:02}-{unit["number"]} · {STAGES[stage]} completed', user)
+    await log(unit['project_id'], 'stage', f'Blk {unit["block"]} · #{unit["level"]:02}-{unit["number"]} · {stages[stage]["name"]} completed', user)
     return await get('units', id)
 
 @router.post('/units/{id}/inspections', response_model=Record)
@@ -338,7 +477,12 @@ async def request_inspection(id: str, data: InspectionIn, user: dict = Depends(r
         raise HTTPException(400, 'Readiness checklist does not match the project template')
     if not all(c.checked for c in data.checklist):
         raise HTTPException(400, 'All readiness checklist items must be confirmed')
-    result = await database().units.update_one({'id': id, 'stage': 5, 'rto': {'$in': ['none', 'rework']}}, {'$set': {'rto': 'pending', 'sample': False, 'updated_at': now()}})
+    # The RTO gate lives on whichever stage carries requires_rto (index 5 by default).
+    stages = (await _project_with_stages(unit['project_id']))['workflow_stages']
+    rto_stage = _rto_index(stages)
+    if rto_stage < 0:
+        raise HTTPException(400, 'This project has no RTO approval stage')
+    result = await database().units.update_one({'id': id, 'stage': rto_stage, 'rto': {'$in': ['none', 'rework']}}, {'$set': {'rto': 'pending', 'sample': False, 'updated_at': now()}})
     if not result.modified_count: raise HTTPException(400, 'Complete installation first; only one pending inspection is allowed')
     checklist = [{'item': c.item, 'checked': True,
                   'checked_by': {'id': user['id'], 'name': user['name']},
@@ -352,7 +496,11 @@ async def decide(id: str, data: DecisionIn, user: dict = Depends(require_roles(*
     inspection = await get('inspections', id)
     if inspection['status'] != 'pending': raise HTTPException(400, 'Inspection is already closed')
     unit = await get('units', inspection['unit_id'])
-    changed = await database().units.update_one({'id': unit['id'], 'stage': 5, 'rto': 'pending'}, {'$set': {'stage': 6 if data.result == 'approved' else 5, 'rto': data.result, 'sample': False, 'updated_at': now()}, '$push': {'history': {'stage': 5, 'note': data.note, 'inspector': data.inspector, 'result': data.result, 'at': now()}}})
+    stages = (await _project_with_stages(unit['project_id']))['workflow_stages']
+    rto_stage = _rto_index(stages)
+    if rto_stage < 0:
+        raise HTTPException(400, 'This project has no RTO approval stage')
+    changed = await database().units.update_one({'id': unit['id'], 'stage': rto_stage, 'rto': 'pending'}, {'$set': {'stage': rto_stage + 1 if data.result == 'approved' else rto_stage, 'rto': data.result, 'sample': False, 'updated_at': now()}, '$push': {'history': {'stage': rto_stage, 'note': data.note, 'inspector': data.inspector, 'result': data.result, 'at': now()}}})
     if not changed.modified_count: raise HTTPException(409, 'Unit is not awaiting this inspection')
     await database().inspections.update_one({'id': id}, {'$set': {'status': data.result, 'inspector': data.inspector, 'note': data.note, 'decided_by': {'id': user['id'], 'name': user['name']}, 'decided_at': now()}})
     await log(unit['project_id'], 'inspection', f'Blk {unit["block"]} · {inspection["unit_label"]} · RTO {data.result}', user)
@@ -368,7 +516,8 @@ async def decide(id: str, data: DecisionIn, user: dict = Depends(require_roles(*
 @router.post('/units/{id}/points', response_model=Record)
 async def add_point(id: str, data: PointIn, user: dict = Depends(require_roles(*OPS_ROLES))):
     unit = await get('units', id)
-    if unit['stage'] == 9: raise HTTPException(400, 'Completed unit cannot accept new points')
+    stages = (await _project_with_stages(unit['project_id']))['workflow_stages']
+    if unit['stage'] >= len(stages): raise HTTPException(400, 'Completed unit cannot accept new points')
     if any(p['name'].lower() == data.name.lower() for p in unit['points']): raise HTTPException(409, 'Point already exists')
     await database().units.update_one({'id': id}, {'$push': {'points': {'id': uid(), **data.model_dump()}}})
     await log(unit['project_id'], 'unit', f'Blk {unit["block"]} · {data.name} point added', user)
@@ -377,10 +526,12 @@ async def add_point(id: str, data: PointIn, user: dict = Depends(require_roles(*
 @router.post('/units/{id}/tests', response_model=Record)
 async def record_test(id: str, data: TestIn, user: dict = Depends(require_roles(*OPS_ROLES))):
     unit = await get('units', id)
-    if unit['stage'] != 8: raise HTTPException(400, 'Tests are recorded at the insulation testing stage')
+    stages = (await _project_with_stages(unit['project_id']))['workflow_stages']
+    last = len(stages) - 1
+    if unit['stage'] != last: raise HTTPException(400, f"Tests are recorded at the final stage ('{stages[last]['name']}')")
     point = next((p for p in unit['points'] if p['id'] == data.point_id), None)
     if not point: raise HTTPException(404, 'Point not found')
-    claimed = await database().units.update_one({'id': id, 'stage': 8, 'updated_at': unit['updated_at']}, {'$set': {'sample': False, 'updated_at': now()}})
+    claimed = await database().units.update_one({'id': id, 'stage': last, 'updated_at': unit['updated_at']}, {'$set': {'sample': False, 'updated_at': now()}})
     if not claimed.modified_count: raise HTTPException(409, 'Unit changed. Refresh and retry.')
     doc = {'id': uid(), 'project_id': unit['project_id'], 'unit_id': id, 'point_name': point['name'], 'block': unit['block'], 'unit_label': f'#{unit["level"]:02}-{unit["number"]}', **data.model_dump(), 'created_at': now()}
     await log(unit['project_id'], 'test', f'Blk {unit["block"]} · {point["name"]} · Test {data.result}', user)

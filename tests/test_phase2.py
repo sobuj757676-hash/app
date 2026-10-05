@@ -156,11 +156,11 @@ def run(c):
 
     print('\n[2.3 tasks]')
     r = c.post(f'/api/projects/{pid}/tasks', headers=tok('worker'),
-               json={'title': 'sneaky', 'assigned_to': me['id']})
+               json={'title': 'sneaky', 'assignees': [me['id']]})
     check('worker cannot create task', r.status_code == 403)
     r = c.post(f'/api/projects/{pid}/tasks', headers=tok('supervisor'),
                json={'title': 'Pull wires L3', 'description': 'all points',
-                     'assigned_to': me['id'], 'priority': 'high',
+                     'assignees': [me['id']], 'priority': 'high',
                      'due_date': '2026-10-10', 'unit_id': unit['id']})
     check('supervisor creates task', r.status_code == 200, r.text[:200])
     t1 = r.json()

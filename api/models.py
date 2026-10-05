@@ -81,7 +81,7 @@ class UnitIn(BaseModel):
 
 class AdvanceIn(BaseModel):
     note: str = Field(default='', max_length=2000)
-    expected_stage: int = Field(ge=0, le=8)
+    expected_stage: int = Field(ge=0)
 
 class ChecklistItemIn(BaseModel):
     item: str = Field(min_length=1, max_length=200)
@@ -176,12 +176,21 @@ class DefectTransitionIn(BaseModel):
     status: Literal['open', 'assigned', 'in_progress', 'rectified', 'verified', 'cancelled']
     note: str = Field(default='', max_length=1000)
 
+class TaskScopeIn(BaseModel):
+    block_id: str = Field(min_length=1)
+    level: int = Field(ge=1, le=60)
+    stage_index: int = Field(ge=0)
+    unit_ids: list[str] = Field(min_length=1, max_length=500)
+
 class TaskIn(BaseModel):
     title: str = Field(min_length=2, max_length=150)
     description: str = Field(default='', max_length=2000)
     unit_id: str | None = None
     defect_id: str | None = None
-    assigned_to: str = Field(min_length=1)
+    assignees: list[str] = Field(min_length=1, max_length=50)
+    kind: Literal['planned', 'adhoc'] = 'adhoc'
+    scope: TaskScopeIn | None = None
+    plan_date: date | None = None
     priority: Literal['low', 'medium', 'high', 'urgent'] = 'medium'
     due_date: date | None = None
 
@@ -190,7 +199,10 @@ class TaskPatchIn(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     priority: Literal['low', 'medium', 'high', 'urgent'] | None = None
     due_date: date | None = None
-    assigned_to: str | None = Field(default=None, min_length=1)
+    plan_date: date | None = None
+    kind: Literal['planned', 'adhoc'] | None = None
+    scope: TaskScopeIn | None = None
+    assignees: list[str] | None = Field(default=None, min_length=1, max_length=50)
     defect_id: str | None = None
 
 class TaskTransitionIn(BaseModel):
@@ -200,9 +212,22 @@ class TaskTransitionIn(BaseModel):
 class DefectTaskIn(BaseModel):
     title: str = Field(min_length=2, max_length=150)
     description: str = Field(default='', max_length=2000)
-    assigned_to: str | None = Field(default=None, min_length=1)
+    assignees: list[str] | None = Field(default=None, min_length=1, max_length=50)
     priority: Literal['low', 'medium', 'high', 'urgent'] = 'medium'
     due_date: date | None = None
+
+class WorkflowStage(BaseModel):
+    id: str = Field(min_length=1, max_length=20)
+    name: str = Field(min_length=1, max_length=60)
+    name_key: str | None = Field(default=None, max_length=20)
+    requires_rto: bool = False
+
+class WorkflowStagesIn(BaseModel):
+    stages: list[WorkflowStage] = Field(min_length=1, max_length=40)
+
+class BulkAdvanceIn(BaseModel):
+    unit_ids: list[str] = Field(min_length=1, max_length=500)
+    to_stage: int = Field(ge=0)
 
 class RtoChecklistIn(BaseModel):
     template: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(min_length=1, max_length=30)

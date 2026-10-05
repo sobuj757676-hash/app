@@ -1,7 +1,7 @@
 """Task assignment endpoints."""
 from fastapi import APIRouter, HTTPException, Depends, Query
 from models import TaskIn, TaskPatchIn, TaskTransitionIn, DefectTaskIn, Record
-from routes import database, get, uid, now, save, log, log_change, is_worker
+from routes import database, get, uid, now, save, log, log_change, is_worker, _project_with_stages
 from auth import get_current_user, require_roles, OPS_ROLES
 from notify import notify
 
@@ -20,8 +20,39 @@ def _may_transition(user: dict, task: dict, new_status: str) -> bool:
     if user.get('role') in ('admin', 'manager', 'engineer', 'supervisor'):
         return True
     if user.get('role') == 'worker':
-        return task.get('assigned_to') == user.get('id') and new_status != 'cancelled'
+        return user.get('id') in task.get('assignees', []) and new_status != 'cancelled'
     return False
+
+
+async def _resolve_assignees(aids: list[str] | None) -> list[dict]:
+    """Validate assignee ids (deduped, order preserved); all must be active
+    users. Raises 404 naming the bad id."""
+    docs = []
+    for aid in dict.fromkeys(aids or []):
+        a = await database().users.find_one({'id': aid, 'active': True},
+                                            {'_id': 0, 'id': 1, 'name': 1})
+        if not a:
+            raise HTTPException(404, f'Assignee not found or inactive: {aid}')
+        docs.append(a)
+    return docs
+
+
+async def _validate_scope(pid: str, scope) -> dict:
+    """Validate a planned-task scope against the project; return the stored dict."""
+    stages = (await _project_with_stages(pid)).get('workflow_stages') or []
+    if scope.stage_index >= len(stages):
+        raise HTTPException(400, 'Scope stage is out of range')
+    block = await database().blocks.find_one({'id': scope.block_id, 'project_id': pid},
+                                             {'_id': 0, 'id': 1})
+    if not block:
+        raise HTTPException(400, 'Scope block does not belong to this project')
+    unit_ids = list(dict.fromkeys(scope.unit_ids))
+    n = await database().units.count_documents(
+        {'id': {'$in': unit_ids}, 'project_id': pid})
+    if n != len(unit_ids):
+        raise HTTPException(400, 'Scope units must belong to this project')
+    return {'block_id': scope.block_id, 'level': scope.level,
+            'stage_index': scope.stage_index, 'unit_ids': unit_ids}
 
 
 async def _validate_defect_link(pid: str, defect_id: str) -> dict:
@@ -69,16 +100,14 @@ async def _history(task_id: str, status: str, note: str, user: dict):
 
 async def _create_task(*, pid: str, defect_id: str | None, title: str,
                        description: str | None, unit_id: str | None,
-                       assignee_id: str | None, priority: str,
-                       due_date, user: dict) -> dict:
-    """Shared task creation used by both POST endpoints. assignee_id optional."""
+                       assignees: list[str] | None, priority: str,
+                       due_date, user: dict,
+                       kind: str = 'adhoc', scope: dict | None = None,
+                       plan_date=None) -> dict:
+    """Shared task creation used by both POST endpoints. assignees optional
+    (empty = unassigned). All assignees are notified."""
     await get('projects', pid)
-    assignee = None
-    if assignee_id:
-        assignee = await database().users.find_one({'id': assignee_id, 'active': True},
-                                                   {'_id': 0, 'id': 1, 'name': 1})
-        if not assignee:
-            raise HTTPException(404, 'Assignee not found or inactive')
+    people = await _resolve_assignees(assignees)
     unit_label = ''
     if unit_id:
         unit = await get('units', unit_id)
@@ -90,8 +119,10 @@ async def _create_task(*, pid: str, defect_id: str | None, title: str,
         'id': uid(), 'project_id': pid, 'unit_id': unit_id, 'unit_label': unit_label,
         'defect_id': defect_id,
         'title': title.strip(), 'description': (description or '').strip(),
-        'assigned_to': assignee['id'] if assignee else None,
-        'assigned_to_name': assignee['name'] if assignee else '',
+        'assignees': [a['id'] for a in people],
+        'assignee_names': [a['name'] for a in people],
+        'kind': kind, 'scope': scope,
+        'plan_date': plan_date.isoformat() if plan_date else None,
         'status': 'todo', 'priority': priority,
         'due_date': due_date.isoformat() if due_date else None,
         'created_by': {'id': user['id'], 'name': user['name']},
@@ -99,9 +130,9 @@ async def _create_task(*, pid: str, defect_id: str | None, title: str,
         'created_at': now(), 'updated_at': now(),
     }
     await log(pid, 'task',
-              f'Task assigned · {title}' + (f' → {assignee["name"]}' if assignee else ''), user)
-    if assignee:
-        await notify(assignee['id'], 'task_assigned',
+              f'Task assigned · {title}' + (f" → {', '.join(a['name'] for a in people)}" if people else ''), user)
+    for a in people:
+        await notify(a['id'], 'task_assigned',
                      f'Task assigned: {title}',
                      f'Priority: {priority}' + (f' · due {due_date.isoformat()}' if due_date else ''),
                      {'page': 'tasks', 'id': doc['id']})
@@ -113,10 +144,14 @@ async def _create_task(*, pid: str, defect_id: str | None, title: str,
 @router.post('/projects/{pid}/tasks', response_model=Record)
 async def create_task(pid: str, data: TaskIn,
                       user: dict = Depends(require_roles('admin', 'manager', 'engineer', 'supervisor'))):
+    if data.kind == 'planned' and is_worker(user):
+        raise HTTPException(403, 'You do not have permission for this action')
+    scope = await _validate_scope(pid, data.scope) if data.scope else None
     return await _create_task(pid=pid, defect_id=data.defect_id, title=data.title,
                               description=data.description, unit_id=data.unit_id,
-                              assignee_id=data.assigned_to, priority=data.priority,
-                              due_date=data.due_date, user=user)
+                              assignees=data.assignees, priority=data.priority,
+                              due_date=data.due_date, user=user,
+                              kind=data.kind, scope=scope, plan_date=data.plan_date)
 
 
 @router.post('/defects/{id}/tasks', response_model=Record)
@@ -126,7 +161,7 @@ async def create_defect_task(id: str, data: DefectTaskIn,
     defect = await get('defects', id)
     return await _create_task(pid=defect['project_id'], defect_id=id, title=data.title,
                               description=data.description, unit_id=None,
-                              assignee_id=data.assigned_to, priority=data.priority,
+                              assignees=data.assignees, priority=data.priority,
                               due_date=data.due_date, user=user)
 
 
@@ -156,11 +191,11 @@ async def list_tasks(pid: str, user: dict = Depends(get_current_user),
     if priority:
         clauses.append({'priority': priority})
     if assigned_to == 'me':
-        clauses.append({'assigned_to': user['id']})
+        clauses.append({'assignees': user['id']})
     elif assigned_to:
-        clauses.append({'assigned_to': assigned_to})
+        clauses.append({'assignees': assigned_to})
     if is_worker(user):
-        clauses.append({'assigned_to': user['id']})
+        clauses.append({'assignees': user['id']})
     filt = clauses[0] if len(clauses) == 1 else {'$and': clauses}
     docs = await database().tasks.find(filt, {'_id': 0}).sort('created_at', -1).to_list(5000)
     return await _attach_defects(docs)
@@ -173,10 +208,14 @@ async def edit_task(id: str, data: TaskPatchIn,
     dump = data.model_dump(exclude_unset=True)
     patch = {}
     for k, v in dump.items():
-        if k == 'due_date':
+        if k in ('due_date', 'plan_date'):
             patch[k] = v.isoformat() if v else None
         elif k == 'defect_id':
             continue  # handled below (None clears the link)
+        elif k == 'assignees':
+            continue  # handled below (validated + denormalized)
+        elif k == 'scope':
+            patch[k] = await _validate_scope(task['project_id'], data.scope) if v is not None else None
         elif v is not None:
             patch[k] = v
     if 'defect_id' in dump:
@@ -184,17 +223,19 @@ async def edit_task(id: str, data: TaskPatchIn,
         if new_did:
             await _validate_defect_link(task['project_id'], new_did)
         patch['defect_id'] = new_did
-    if 'assigned_to' in patch:
-        assignee = await database().users.find_one({'id': patch['assigned_to'], 'active': True},
-                                                   {'_id': 0, 'id': 1, 'name': 1})
-        if not assignee:
-            raise HTTPException(404, 'Assignee not found or inactive')
-        patch['assigned_to_name'] = assignee['name']
-        if assignee['id'] != task['assigned_to']:
-            await notify(assignee['id'], 'task_assigned',
-                         f'Task assigned: {task["title"]}',
-                         f'Reassigned by {user["name"]}',
-                         {'page': 'tasks', 'id': id})
+    if 'assignees' in dump:
+        people = await _resolve_assignees(dump['assignees'])
+        if not people:
+            raise HTTPException(400, 'Task needs at least one assignee')
+        patch['assignees'] = [a['id'] for a in people]
+        patch['assignee_names'] = [a['name'] for a in people]
+        old_ids = set(task.get('assignees') or [])
+        for a in people:
+            if a['id'] not in old_ids:
+                await notify(a['id'], 'task_assigned',
+                             f'Task assigned: {task["title"]}',
+                             f'Reassigned by {user["name"]}',
+                             {'page': 'tasks', 'id': id})
     if 'title' in patch:
         patch['title'] = patch['title'].strip()
     if 'description' in patch:

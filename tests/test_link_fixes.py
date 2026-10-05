@@ -67,11 +67,11 @@ def run(c):
     assert r.status_code == 200, r.text[:200]
     d1 = r.json()['id']
     r = c.post(f'/api/projects/{pid}/tasks', headers=tok('supervisor'),
-               json={'title': 'Fixreg linked task', 'assigned_to': me_worker['id'], 'defect_id': d1})
+               json={'title': 'Fixreg linked task', 'assignees': [me_worker['id']], 'defect_id': d1})
     assert r.status_code == 200, r.text[:200]
     t1 = r.json()['id']
     r = c.post(f'/api/projects/{pid}/tasks', headers=tok('supervisor'),
-               json={'title': 'Fixreg plain task', 'assigned_to': me_worker['id']})
+               json={'title': 'Fixreg plain task', 'assignees': [me_worker['id']]})
     assert r.status_code == 200, r.text[:200]
 
     ws = c.get(f'/api/projects/{pid}/workspace', headers=tok('supervisor')).json()
