@@ -24,6 +24,7 @@ import References from './pages/References';
 import Settings from './pages/Settings';
 import ProjectSettings from './pages/settings/ProjectSettings';
 import RtoChecklist from './pages/settings/RtoChecklist';
+import WorkflowStages from './pages/settings/WorkflowStages';
 import PointTemplates,{PointTemplateEditor} from './pages/settings/PointTemplates';
 import PasswordSettings from './pages/settings/PasswordSettings';
 import LanguageSettings from './pages/settings/LanguageSettings';
@@ -31,6 +32,7 @@ import Users from './pages/Users';
 import Login from './pages/Login';
 import './App.css';
 import './fixes-a.css';
+import './plan-tasks.css';
 
 // Wires the api.js 401 interceptor into React state: instead of a hard page
 // reload (which destroys in-progress forms), we clear the session, show a
@@ -94,6 +96,7 @@ function Shell(){
    <Route path="/settings" element={<Settings/>}/>
    <Route path="/settings/project" element={<ProjectSettings/>}/>
    <Route path="/settings/rto-checklist" element={<RtoChecklist/>}/>
+   <Route path="/settings/workflow-stages" element={<WorkflowStages/>}/>
    <Route path="/settings/point-templates" element={<PointTemplates/>}/>
    <Route path="/settings/point-templates/:roomType" element={<PointTemplateEditor/>}/>
    <Route path="/settings/password" element={<PasswordSettings/>}/>

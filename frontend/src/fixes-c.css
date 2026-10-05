@@ -38,3 +38,10 @@ button[data-testid^="defect-chip-"] svg{flex-shrink:0;}
 /* 12. Photo gallery load error state. */
 .photo-load-error{display:flex;flex-direction:column;align-items:center;gap:10px;
  padding:30px 10px;color:var(--muted-text);font-size:12px;text-align:center;}
+
+/* 13. Workflow stages settings screen. */
+.stage-row{flex-wrap:wrap;}
+.stage-name-input{flex:1;min-width:140px;min-height:44px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font-size:13px;}
+.rto-toggle{display:flex;align-items:center;gap:7px;min-height:44px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted-text);font-size:11px;font-weight:600;}
+.rto-toggle.on{border-color:#d9a441;color:#b97f1f;background:#fdf6e8;}
+.dark .rto-toggle.on{background:#3a3122;color:#f0c46c;}

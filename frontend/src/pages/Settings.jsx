@@ -1,5 +1,5 @@
 import {useNavigate} from 'react-router-dom';
-import {Building2,ClipboardCheck,Zap,Lock,Globe,ChevronRight} from 'lucide-react';
+import {Building2,ClipboardCheck,Zap,Lock,Globe,ChevronRight,Workflow} from 'lucide-react';
 import {useWorkspace} from '../lib/store';
 import {useLanguage} from '../lib/i18n';
 import {PageTitle} from '../components/Common';
@@ -14,6 +14,7 @@ export default function Settings(){
  const groups=[
   {label:t('projectSection'),rows:[
    {icon:Building2,title:t('settings'),summary:[p.name,p.location].filter(Boolean).join(' · '),to:'/settings/project',id:'menu-project'},
+   {icon:Workflow,title:t('workflowStages'),summary:`${(data.project.workflow_stages||[]).length||9} ${t('stages')}`,to:'/settings/workflow-stages',id:'menu-workflow-stages'},
   ]},
   {label:t('quality'),rows:[
    {icon:ClipboardCheck,title:t('rtoChecklist'),summary:`${checklist.length} ${t('items')}`,to:'/settings/rto-checklist',id:'menu-rto'},

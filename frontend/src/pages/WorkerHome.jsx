@@ -3,7 +3,9 @@ import {CheckCircle2,Clock3,CalendarDays,ListChecks,OctagonAlert} from 'lucide-r
 import {useAuth} from '../lib/auth';
 import {useWorkspace} from '../lib/store';
 import {useLanguage} from '../lib/i18n';
-import {api,today,percent,errorText,fmtDate} from '../lib/api';
+import {api,today,percent,errorText,fmtDate,stagesOf} from '../lib/api';
+import {isAssigned,PRIW} from '../lib/planTasks';
+import {planScopeText} from './PlanDay';
 import {PageTitle,Metric,ProgressBar,StatusBadge,Empty,Action} from '../components/Common';
 import {DefectDrawer} from '../components/DefectDrawer';
 import {DefectReportModal} from '../components/DefectReportModal';
@@ -14,11 +16,23 @@ const TASK_NEXT={todo:['in_progress'],in_progress:['todo','done'],done:[],cancel
 const DEFECT_NEXT={assigned:['in_progress'],in_progress:['rectified']};
 const LIVE_DEFECT=['open','assigned','in_progress','rectified'];
 
-const isLive=i=>i.kind==='task'?!['done','cancelled'].includes(i.status):LIVE_DEFECT.includes(i.status);
+// NOTE: the merged work-list discriminator is `wkind` (task/defect) because
+// tasks now carry their own `kind` ('planned'|'adhoc') from the Part B/C contract.
+const isLive=i=>i.wkind==='task'?!['done','cancelled'].includes(i.status):LIVE_DEFECT.includes(i.status);
 const isOverdue=i=>!!(i.due_date&&i.due_date<today()&&isLive(i));
+const isPlannedToday=i=>(i.kind==='planned'||(!i.kind&&i.plan_date))&&i.plan_date===today();
 
 // Due-date line with a red clock + "Overdue" badge when past due (same language as Tasks.jsx).
 function DueLine({t,date,overdue}){return <span className={`mono due-line${overdue?' overdue-text':''}`}><Clock3 size={12}/>{date}{overdue&&<b className="overdue-badge">{t('overdue')}</b>}</span>;}
+
+function WorkerTaskRow({i,t,user,data,moveBusy,moveTask,onOpenDefect}){
+ return <div className="worker-task" data-testid={`worker-task-${i.id}`}>
+  <div><strong>{i.title}</strong>{i.scope?<small className="scope-line" data-testid={`worker-scope-${i.id}`}>{planScopeText(i,data,t)}</small>:i.unit_label&&<small>{i.unit_label}</small>}{i.due_date&&<DueLine t={t} date={i.due_date} overdue={isOverdue(i)}/>}</div>
+  {i.defect&&<DefectChip defect={i.defect} onOpen={()=>onOpenDefect(i.defect.id)}/>}
+  <StatusBadge value={i.status} id={`worker-task-status-${i.id}`}/>
+  <div className="worker-task-actions">{(TASK_NEXT[i.status]||[]).filter(s=>mayMove(user,i,s)).map(s=><button key={s} type="button" data-testid={`worker-task-${s}-${i.id}`} className="attend-submit small" disabled={moveBusy.includes(i.id)} onClick={()=>moveTask(i,s)}>{t(s==='todo'?'todo':s)}</button>)}</div>
+ </div>;
+}
 
 export default function WorkerHome(){
  const {t,lang}=useLanguage();const {user}=useAuth();const {data,refresh,mutate}=useWorkspace();
@@ -43,11 +57,11 @@ export default function WorkerHome(){
   try{await mutate('post',`/defects/${defect.id}/transition`,{status:next});toast.success(t('saved'));}
   catch{/* toasted by mutate */}
  };
- const myTasks=(data.tasks||[]).filter(x=>x.assigned_to===user?.id&&!['done','cancelled'].includes(x.status)).map(x=>({...x,kind:'task'}));
- const myDefects=(data.defects||[]).filter(d=>d.assigned_to===user?.id&&LIVE_DEFECT.includes(d.status)).map(d=>({...d,kind:'defect'}));
+ const myTasks=(data.tasks||[]).filter(x=>isAssigned(x,user?.id)&&!['done','cancelled'].includes(x.status)).map(x=>({...x,wkind:'task'}));
+ const myDefects=(data.defects||[]).filter(d=>d.assigned_to===user?.id&&LIVE_DEFECT.includes(d.status)).map(d=>({...d,wkind:'defect'}));
  const urgency=i=>{
   if(isOverdue(i))return 0;
-  if(i.kind==='defect'&&i.severity==='critical'&&isLive(i))return 0;
+  if(i.wkind==='defect'&&i.severity==='critical'&&isLive(i))return 0;
   return 1;
  };
  const byDue=(a,b)=>{
@@ -55,10 +69,15 @@ export default function WorkerHome(){
   if(a.due_date&&b.due_date&&a.due_date!==b.due_date)return a.due_date<b.due_date?-1:1;
   return (b.created_at||'').localeCompare(a.created_at||'');
  };
+ // Today's planned assignments pin to the top, sorted by priority then due.
+ const planToday=myTasks.filter(isPlannedToday).sort((a,b)=>PRIW[a.priority]-PRIW[b.priority]||byDue(a,b));
+ const showPlan=filter==='all'||filter==='task';
  const work=[...myTasks,...myDefects]
-  .filter(i=>filter==='all'||i.kind===filter)
+  .filter(i=>filter==='all'||i.wkind===filter)
+  .filter(i=>!(showPlan&&i.wkind==='task'&&planToday.some(p=>p.id===i.id)))
   .sort((a,b)=>urgency(a)-urgency(b)||byDue(a,b));
  const pending=data.inspections.filter(i=>i.status==='pending').length;
+const sc=stagesOf(data).length||1;
  return <div className="page-enter worker-home" data-testid="worker-home">
   <PageTitle title={`${t('hello')}, ${user?.name?.split(' ')[0]||''}`} subtitle={`${t('today')}: ${fmtDate(new Date(),lang)}${me?.trade?` · ${me.trade}`:''}`}/>
   <section className="worker-attendance" data-testid="worker-attendance-card">
@@ -71,10 +90,10 @@ export default function WorkerHome(){
   <section className="worker-site">
    <h2>{t('siteToday')}</h2>
    <div className="metrics-grid two">
-    <Metric id="worker-progress" title={t('overallProgress')} value={`${percent(data.units)}%`} sub={t('stagesComplete')} icon={Clock3}/>
+    <Metric id="worker-progress" title={t('overallProgress')} value={`${percent(data.units,sc)}%`} sub={t('stagesComplete')} icon={Clock3}/>
     <Metric id="worker-rto" title={t('pendingRto')} value={pending} sub={t('awaitingInspection')} icon={CheckCircle2} tone="amber"/>
    </div>
-   <div className="worker-progress"><ProgressBar id="worker-progress-bar" value={percent(data.units)}/></div>
+   <div className="worker-progress"><ProgressBar id="worker-progress-bar" value={percent(data.units,sc)}/></div>
   </section>
   <section className="worker-tasks" data-testid="worker-work">
    <div className="worker-tasks-head"><div><h2><ListChecks size={18}/>{t('myWork')}</h2><p className="section-sub">{t('myWorkSub')}</p></div><Action id="worker-report-defect" onClick={()=>setReport(true)}>{t('reportDefect')}</Action></div>
@@ -82,13 +101,12 @@ export default function WorkerHome(){
    <div className="filter-chips" data-testid="work-filter">
     {[['all',t('all')],['task',t('tasks')],['defect',t('defects')]].map(([k,label])=><button key={k} type="button" data-testid={`work-filter-${k}`} className={filter===k?'active':''} onClick={()=>setFilter(k)}>{label}</button>)}
    </div>
-   {work.length?work.map(i=>i.kind==='task'
-    ?<div key={i.id} className="worker-task" data-testid={`worker-task-${i.id}`}>
-      <div><strong>{i.title}</strong>{i.unit_label&&<small>{i.unit_label}</small>}{i.due_date&&<DueLine t={t} date={i.due_date} overdue={isOverdue(i)}/>}</div>
-      {i.defect&&<DefectChip defect={i.defect} onOpen={()=>setDefectId(i.defect.id)}/>}
-      <StatusBadge value={i.status} id={`worker-task-status-${i.id}`}/>
-      <div className="worker-task-actions">{(TASK_NEXT[i.status]||[]).filter(s=>mayMove(user,i,s)).map(s=><button key={s} type="button" data-testid={`worker-task-${s}-${i.id}`} className="attend-submit small" disabled={moveBusy.includes(i.id)} onClick={()=>moveTask(i,s)}>{t(s==='todo'?'todo':s)}</button>)}</div>
-     </div>
+   {showPlan&&planToday.length>0&&<div className="plan-pinned" data-testid="planned-today">
+    <h3><CalendarDays size={16}/>{t('plannedToday')} <span className="count-pill">{planToday.length}</span></h3>
+    {planToday.map(i=><WorkerTaskRow key={i.id} i={i} t={t} user={user} data={data} moveBusy={moveBusy} moveTask={moveTask} onOpenDefect={setDefectId}/>)}
+   </div>}
+   {work.length?work.map(i=>i.wkind==='task'
+    ?<WorkerTaskRow key={i.id} i={i} t={t} user={user} data={data} moveBusy={moveBusy} moveTask={moveTask} onOpenDefect={setDefectId}/>
     :<div key={i.id} className="worker-task worker-defect" data-testid={`worker-defect-${i.id}`}>
       <div><strong><OctagonAlert size={14}/> {i.title}</strong>{i.block&&<small>{`Blk ${i.block} · #${String(i.level).padStart(2,'0')}-${i.number}`}</small>}{i.due_date&&<DueLine t={t} date={i.due_date} overdue={isOverdue(i)}/>}</div>
       <span className={`severity-tag ${i.severity}`}>{t(i.severity)}</span>

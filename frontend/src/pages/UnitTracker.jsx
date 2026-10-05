@@ -4,7 +4,7 @@ import {Grid2X2,List,Search,ArrowUpRight,Check,Clock3,AlertTriangle,Building2} f
 import {useLanguage} from '../lib/i18n';
 import {useWorkspace} from '../lib/store';
 import {useAuth,canWrite} from '../lib/auth';
-import {label,status,percent} from '../lib/api';
+import {label,status,percent,stageName,stagesOf} from '../lib/api';
 import {PageTitle,ExportButton,Action,StatusBadge,ProgressBar,Empty,FormModal} from '../components/Common';
 import {ROOM_TYPES} from '../components/BlockModal';
 
@@ -12,6 +12,7 @@ const statuses=['completed','inProgress','pending','rework','notStarted'];
 export default function UnitTracker(){
  const {t}=useLanguage();
  const {data,selectedUnit,setSelectedUnit,mutate}=useWorkspace();
+ const stages=stagesOf(data),sc=stages.length||1;
  const {user}=useAuth();const ro=!canWrite(user);
  const [params,setParams]=useSearchParams();
  const [block,setBlock]=useState(params.get('block')||(params.has('q')?'all':data.blocks[0]?.id||''));
@@ -37,7 +38,7 @@ export default function UnitTracker(){
  const allBlocks=block==='all';
  const chosen=data.blocks.find(b=>b.id===block);
  const blockUnits=data.units.filter(u=>allBlocks||u.block_id===chosen?.id);
- const filtered=blockUnits.filter(u=>(filter==='all'||status(u)===filter)&&(level==='all'||u.level===Number(level))&&`${label(u)} ${u.block} ${u.assigned_to}`.toLowerCase().includes(q.toLowerCase()));
+ const filtered=blockUnits.filter(u=>(filter==='all'||status(u,sc)===filter)&&(level==='all'||u.level===Number(level))&&`${label(u)} ${u.block} ${u.assigned_to}`.toLowerCase().includes(q.toLowerCase()));
  const floors=[...new Set(blockUnits.map(u=>u.level))].sort((a,b)=>b-a);
  const stacks=[...new Set(blockUnits.map(u=>u.number))].sort((a,b)=>Number(a)-Number(b));
  const cells=useMemo(()=>Object.fromEntries(filtered.map(u=>[`${u.level}-${u.number}`,u])),[filtered]);
@@ -53,9 +54,9 @@ export default function UnitTracker(){
   </div>
   <div className="tracker-overview">
    <div><h2 data-testid="selected-block">{allBlocks?t('allBlocks'):`${t('block')} ${chosen?.name||'—'}`}</h2><span>{allBlocks?`${data.blocks.length} ${t('block')}`:`${chosen?.levels||0} ${t('levels')}`} <i>·</i> {blockUnits.length} {t('unitCount')}</span></div>
-   <div className="tracker-progress"><span>{t('overallProgress')}<b>{percent(blockUnits)}%</b></span><ProgressBar id="tracker-block-progress" value={percent(blockUnits)}/></div>
+   <div className="tracker-progress"><span>{t('overallProgress')}<b>{percent(blockUnits,sc)}%</b></span><ProgressBar id="tracker-block-progress" value={percent(blockUnits,sc)}/></div>
   </div>
-  <div className="tracker-legend">{statuses.map(s=><button key={s} data-testid={`status-filter-${s}`} onClick={()=>setFilter(filter===s?'all':s)} className={filter===s?'selected':''}><StatusBadge id={`legend-${s}`} value={s}/><b>{blockUnits.filter(u=>status(u)===s).length}</b></button>)}</div>
+  <div className="tracker-legend">{statuses.map(s=><button key={s} data-testid={`status-filter-${s}`} onClick={()=>setFilter(filter===s?'all':s)} className={filter===s?'selected':''}><StatusBadge id={`legend-${s}`} value={s}/><b>{blockUnits.filter(u=>status(u,sc)===s).length}</b></button>)}</div>
   <div className="filter-bar">
    <div className="search-field"><Search size={16}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder={t('searchUnits')} data-testid="unit-search"/></div>
    <select data-testid="level-filter" value={level} onChange={e=>setLevel(e.target.value)}><option value="all">{t('allLevels')}</option>{floors.slice().reverse().map(l=><option key={l} value={l}>{t('level')} {l}</option>)}</select>
@@ -67,13 +68,13 @@ export default function UnitTracker(){
     <div className="matrix-corner">{t('level')}</div>{stacks.map(n=><div className="matrix-column" key={n}>#{n}</div>)}
     {floors.filter(l=>level==='all'||l===Number(level)).map(l=><div className="matrix-row" key={l}>
      <div className="matrix-level">{String(l).padStart(2,'0')}</div>
-     {stacks.map(n=>{const u=cells[`${l}-${n}`];return u?<button key={n} data-testid={`matrix-unit-${u.id}`} aria-label={`${t('block')} ${u.block} ${label(u)} ${t(status(u))}`} title={`${label(u)} · ${t(u.stage===9?'completed':`stage${u.stage}`)}`} className={`unit-cell ${status(u)}`} onClick={()=>openUnit(u)}>{u.stage===9?<Check size={16}/>:u.rto==='pending'?<Clock3 size={16}/>:u.rto==='rework'?<AlertTriangle size={16}/>:<span>{u.stage}<small>/9</small></span>}</button>:<div className="unit-cell unavailable" key={n}>—</div>;})}
+     {stacks.map(n=>{const u=cells[`${l}-${n}`];return u?<button key={n} data-testid={`matrix-unit-${u.id}`} aria-label={`${t('block')} ${u.block} ${label(u)} ${t(status(u,sc))}`} title={`${label(u)} · ${u.stage>=sc?t('completed'):stageName(stages[u.stage],t)}`} className={`unit-cell ${status(u,sc)}`} onClick={()=>openUnit(u)}>{u.stage>=sc?<Check size={16}/>:u.rto==='pending'?<Clock3 size={16}/>:u.rto==='rework'?<AlertTriangle size={16}/>:<span>{u.stage}<small>/{sc}</small></span>}</button>:<div className="unit-cell unavailable" key={n}>—</div>;})}
     </div>)}
    </div></div>:
    <div className="table-scroll tracker-list"><table data-testid="units-table">
     <thead><tr>{['block','unit','unitType','currentStage','team','status','progress'].map(k=><th key={k}>{t(k)}</th>)}<th/></tr></thead>
     <tbody>{filtered.map(u=><tr key={u.id} data-testid={`unit-row-${u.id}`}>
-     <td>{u.block}</td><td><button className="unit-link" data-testid={`open-unit-${u.id}`} onClick={()=>openUnit(u)}>{label(u)}</button></td><td>{u.unit_type}</td><td>{t(u.stage===9?'completed':`stage${u.stage}`)}</td><td>{u.assigned_to||t('unassigned')}</td><td><StatusBadge id={`unit-status-${u.id}`} value={status(u)}/></td><td><span className="mono">{u.stage}/9</span></td><td><button className="icon-button" title={t('view')} data-testid={`unit-detail-${u.id}`} onClick={()=>openUnit(u)}><ArrowUpRight size={17}/></button></td>
+     <td>{u.block}</td><td><button className="unit-link" data-testid={`open-unit-${u.id}`} onClick={()=>openUnit(u)}>{label(u)}</button></td><td>{u.unit_type}</td><td>{u.stage>=sc?t('completed'):stageName(stages[u.stage],t)}</td><td>{u.assigned_to||t('unassigned')}</td><td><StatusBadge id={`unit-status-${u.id}`} value={status(u,sc)}/></td><td><span className="mono">{u.stage}/{sc}</span></td><td><button className="icon-button" title={t('view')} data-testid={`unit-detail-${u.id}`} onClick={()=>openUnit(u)}><ArrowUpRight size={17}/></button></td>
     </tr>)}</tbody>
    </table></div>
   }

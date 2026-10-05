@@ -5,6 +5,7 @@ import {useLanguage} from '../lib/i18n';
 import {useWorkspace} from '../lib/store';
 import {useAuth} from '../lib/auth';
 import {api,errorText,label,fmtDateTime} from '../lib/api';
+import {assigneeNames} from '../lib/planTasks';
 import {StatusBadge,Action,Empty} from './Common';
 import {PhotoUpload,PhotoGallery} from './Photos';
 import {TaskModal} from './TaskModal';
@@ -81,7 +82,7 @@ export const DefectDrawer=({defectId,onClose})=>{
    {linkError
     ?<div className="inline-error" data-testid="linked-tasks-error"><span>{t('linkedTasksLoadFailed')}</span><button type="button" className="text-link" onClick={loadLinked}>{t('retry')}</button></div>
     :linkedTasks.length?linkedTasks.map(x=><button key={x.id} type="button" className="linked-task-row" data-testid={`linked-task-${x.id}`} onClick={()=>{onClose();navigate(`/tasks?open=${x.id}`);}}>
-    <strong>{x.title}</strong><span className="linked-task-meta"><StatusBadge value={x.status} id={`linked-task-status-${x.id}`}/><small>{x.assigned_to_name||x.assigned_to||t('unassigned')}</small></span>
+    <strong>{x.title}</strong><span className="linked-task-meta"><StatusBadge value={x.status} id={`linked-task-status-${x.id}`}/><small>{assigneeNames(x,t)}</small></span>
    </button>):<Empty text={t('noTasks')}/>}
    {canAssign&&<Action id="defect-followup-task" icon={Plus} secondary onClick={()=>setTaskModal(true)}>{t('followupTask')}</Action>}
   </div>

@@ -6,6 +6,7 @@ import {Input} from './ui/input';
 import {useLanguage} from '../lib/i18n';
 import {useWorkspace} from '../lib/store';
 import {api,label} from '../lib/api';
+import {AssigneeMultiSelect} from './AssigneeMultiSelect';
 import {toast} from 'sonner';
 
 const PRIS=['low','medium','high','urgent'];
@@ -13,27 +14,31 @@ const PRIS=['low','medium','high','urgent'];
 /** Shared task create modal.
  *  Props: open, onClose, defectId? (locked follow-up flow from a defect),
  *  requireAssignee? (default true; false in follow-up flow).
- *  Posts to /defects/{id}/tasks when defectId is set, else /projects/{pid}/tasks. */
+ *  Posts to /defects/{id}/tasks when defectId is set, else /projects/{pid}/tasks.
+ *  Assignees are a multi-select (Part B): posts `assignees: [userId]`. */
 export function TaskModal({open,onClose,defectId=null,requireAssignee=true}){
  const {t}=useLanguage();const {data,mutate}=useWorkspace();
  const [directory,setDirectory]=useState([]);
- const [v,setV]=useState({title:'',description:'',assigned_to:'',priority:'medium',unit_id:'',defect_id:'',due_date:''});
+ const [v,setV]=useState({title:'',description:'',assignees:[],priority:'medium',unit_id:'',defect_id:'',due_date:''});
+ const [assErr,setAssErr]=useState(false);
  const [defectQ,setDefectQ]=useState('');
  const [busy,setBusy]=useState(false),[dirError,setDirError]=useState(false);
  const loadDir=()=>{setDirError(false);api.get('/auth/directory').then(r=>setDirectory(r.data)).catch(()=>setDirError(true));};
- useEffect(()=>{if(open){setV({title:'',description:'',assigned_to:'',priority:'medium',unit_id:'',defect_id:'',due_date:''});setDefectQ('');loadDir();}},[open]);
+ useEffect(()=>{if(open){setV({title:'',description:'',assignees:[],priority:'medium',unit_id:'',defect_id:'',due_date:''});setAssErr(false);setDefectQ('');loadDir();}},[open]);
  // eslint-disable-next-line react-hooks/exhaustive-deps
  const set=(k,val)=>setV(p=>({...p,[k]:val}));
  const lockedDefect=defectId?data?.defects.find(d=>d.id===defectId):null;
  const defectOptions=(data?.defects||[]).filter(d=>`${d.title} ${d.description||''} ${d.status} ${d.severity}`.toLowerCase().includes(defectQ.toLowerCase()));
  const unitOptions=(data?.units||[]).map(u=>({value:u.id,label:`${t('blk')} ${u.block} · ${label(u)}`}));
  const submit=async e=>{
-  e.preventDefault();if(busy)return;setBusy(true);
+  e.preventDefault();if(busy)return;
+  if(requireAssignee&&!v.assignees.length){setAssErr(true);return;}
+  setBusy(true);
   try{
    if(defectId){
-    await mutate('post',`/defects/${defectId}/tasks`,{title:v.title,description:v.description||null,assigned_to:v.assigned_to||null,priority:v.priority,due_date:v.due_date||null});
+    await mutate('post',`/defects/${defectId}/tasks`,{title:v.title,description:v.description||null,assignees:v.assignees.length?v.assignees:null,priority:v.priority,due_date:v.due_date||null});
    }else{
-    await mutate('post',`/projects/${data.project.id}/tasks`,{title:v.title,description:v.description||null,unit_id:v.unit_id||null,defect_id:v.defect_id||null,assigned_to:v.assigned_to,priority:v.priority,due_date:v.due_date||null});
+    await mutate('post',`/projects/${data.project.id}/tasks`,{title:v.title,description:v.description||null,unit_id:v.unit_id||null,defect_id:v.defect_id||null,assignees:v.assignees,priority:v.priority,due_date:v.due_date||null});
    }
    toast.success(t('saved'));onClose();
   }catch{/* toasted by mutate */}finally{setBusy(false);}
@@ -44,9 +49,11 @@ export function TaskModal({open,onClose,defectId=null,requireAssignee=true}){
   <form onSubmit={submit} data-testid="task-modal-form"><div className="form-fields">
    <label className="wide">{t('defectTitle')}<Input data-testid="task-title" className={fld} required maxLength={150} value={v.title} onChange={e=>set('title',e.target.value)}/></label>
    <label className="wide">{t('description')}<textarea data-testid="task-description" rows={3} maxLength={2000} value={v.description} onChange={e=>set('description',e.target.value)}/></label>
-   <label>{t('assignee')}<select data-testid="task-assignee" className={fld} required={requireAssignee} value={v.assigned_to} onChange={e=>set('assigned_to',e.target.value)}>
-    {!v.assigned_to&&<option value="">—</option>}{directory.map(u=><option key={u.id} value={u.id}>{u.name} · {t(u.role)}</option>)}</select></label>
-   {dirError&&<div className="wide inline-error" role="alert" data-testid="task-directory-error"><span>{t('directoryLoadFailed')}</span><button type="button" className="text-link" onClick={loadDir}>{t('retry')}</button></div>}
+   <div className="wide"><span className="field-label">{t('assignees')}<small>{t('selectWorkersHint')}</small></span>
+    <AssigneeMultiSelect directory={directory} value={v.assignees} onChange={ids=>{set('assignees',ids);setAssErr(false);}} id="task-assignees"/>
+    {assErr&&<div className="inline-error" role="alert" data-testid="task-assignees-error"><span>{t('selectAtLeastOne')}</span></div>}
+    {dirError&&<div className="inline-error" role="alert" data-testid="task-directory-error"><span>{t('directoryLoadFailed')}</span><button type="button" className="text-link" onClick={loadDir}>{t('retry')}</button></div>}
+   </div>
    <label>{t('priority')}<select data-testid="task-priority" className={fld} value={v.priority} onChange={e=>set('priority',e.target.value)}>{PRIS.map(p=><option key={p} value={p}>{t(p)}</option>)}</select></label>
    {defectId
     ?<div className="wide"><span className="field-label">{t('linkToDefect')}</span><span className={`severity-tag ${lockedDefect?.severity||'minor'}`} data-testid="task-locked-defect">{lockedDefect?.title||defectId}</span></div>

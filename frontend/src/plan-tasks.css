@@ -1,0 +1,41 @@
+/* Multi-worker tasks + daily work plan (Parts B/C) */
+/* Multi-select checkbox list (TaskModal, plan sheet, reassign dialog) */
+.assignee-multi{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.assignee-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--soft);border-bottom:1px solid var(--line)}
+.assignee-group-head strong{font-size:11px}
+.assignee-group-head>span{display:flex;gap:12px}
+.assignee-group-head .text-link{font-size:10px;min-height:44px;display:inline-flex;align-items:center}
+.assignee-list{max-height:250px;overflow-y:auto}
+.assignee-row{display:flex;align-items:center;gap:12px;min-height:44px;padding:8px 14px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px}
+.assignee-row:last-child{border-bottom:0}
+.assignee-row:hover{background:var(--soft)}
+.assignee-row input[type=checkbox]{width:20px;height:20px;flex-shrink:0;accent-color:var(--blue)}
+.assignee-name{display:flex;flex-direction:column;gap:2px;min-width:0}
+.assignee-name small{font-size:10px;color:var(--muted-text)}
+/* Daily plan page */
+.plan-columns{display:grid;grid-template-columns:1fr 1fr;gap:26px;align-items:start}
+.plan-groups h2,.plan-list h2{font-size:16px;font-weight:550;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.plan-date-field{display:inline-flex;align-items:center;gap:8px;color:var(--muted-text);font-size:12px;border:1px solid var(--line);border-radius:6px;padding:8px 12px;background:var(--surface)}
+.plan-date-field input{border:none;background:transparent;font-size:13px;color:var(--text);min-height:32px}
+.group-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;min-height:56px;cursor:pointer;color:var(--text)}
+.group-row:hover{border-color:#a4bde8}
+.group-check{width:22px;height:22px;border:2px solid var(--line);border-radius:6px;display:grid;place-items:center;flex-shrink:0;color:#fff}
+.group-check.checked{background:var(--blue);border-color:var(--blue)}
+.group-text{font-size:12px;line-height:1.6}
+.plan-group-line{font-size:13px;font-weight:600;margin:4px 0 16px}
+.plan-item{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
+.plan-item strong{display:block;font-size:14px;margin:8px 0 4px}
+.plan-item-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.plan-item-actions .table-action.danger{background:var(--danger-soft);color:var(--danger)}
+.advance-prompt{display:flex;align-items:center;gap:8px;width:100%;margin-top:10px;padding:12px 14px;min-height:44px;border-radius:8px;background:var(--warning-soft);color:var(--warning);border:1px solid #ecdcb8;font-size:12px;font-weight:650;text-align:left}
+.advance-prompt:hover{filter:brightness(.97)}
+.advance-prompt:disabled{opacity:.6}
+.advance-done{font-size:11px;color:var(--success);margin-top:10px;font-weight:600}
+.adv-report{list-style:none;margin:10px 0 0;padding:0;font-size:11px;color:var(--muted-text)}
+.adv-report li{padding:6px 0;border-top:1px solid var(--line)}
+.adv-report li.adv-err{color:var(--danger)}
+.scope-line{display:block;margin-top:4px;color:var(--blue);font-size:11px}
+.plan-pinned{border:1px solid #a4bde8;background:var(--blue-soft);border-radius:12px;padding:14px;margin-bottom:16px}
+.plan-pinned>h3{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:10px}
+.plan-pinned .worker-task{background:var(--surface)}
+@media(max-width:900px){.plan-columns{grid-template-columns:1fr}}
