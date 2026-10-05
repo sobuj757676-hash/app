@@ -6,6 +6,7 @@ import {useWorkspace} from '../lib/store';
 import {useAuth,canWrite} from '../lib/auth';
 import {label,status,percent} from '../lib/api';
 import {PageTitle,ExportButton,Action,StatusBadge,ProgressBar,Empty,FormModal} from '../components/Common';
+import {ROOM_TYPES} from '../components/BlockModal';
 
 const statuses=['completed','inProgress','pending','rework','notStarted'];
 export default function UnitTracker(){
@@ -77,6 +78,6 @@ export default function UnitTracker(){
    </table></div>
   }
   <div className="table-footer" data-testid="unit-result-count">{filtered.length} / {blockUnits.length} {t('unitCount')}<span>{chosen?.sample_layout?t('sample'):t('recorded')}</span></div>
-  {modal&&chosen&&!ro&&<FormModal open onClose={()=>setModal(false)} title={t('addUnit')} initial={{level:1,number:'',unit_type:'4-room',assigned_to:'',note:''}} fields={[{name:'level',label:t('level'),type:'number',min:1,max:chosen.levels},{name:'number',label:t('unit')},{name:'unit_type',label:t('unitType'),options:['2-room Flexi','3-room','4-room','5-room']},{name:'assigned_to',label:t('team'),required:false}]} onSubmit={v=>mutate('post',`/blocks/${chosen.id}/units`,v)}/>}
+  {modal&&chosen&&!ro&&<FormModal open onClose={()=>setModal(false)} title={t('addUnit')} initial={{level:1,number:'',unit_type:'4-room',assigned_to:'',note:''}} fields={[{name:'level',label:t('level'),type:'number',min:1,max:chosen.levels},{name:'number',label:t('unit')},{name:'unit_type',label:t('unitType'),options:ROOM_TYPES},{name:'assigned_to',label:t('team'),required:false}]} onSubmit={v=>mutate('post',`/blocks/${chosen.id}/units`,v)}/>}
  </div>;
 }
