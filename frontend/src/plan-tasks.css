@@ -95,3 +95,5 @@ tr.selected td{background:var(--blue-soft)}
 .plan-progress{font-weight:700}
 .worker-plan .unit-chips{margin-top:8px}
 @media(max-width:900px){.plan-cards{grid-template-columns:1fr}}
+.confirm-inline{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--text-2)}
+.confirm-inline .table-action{min-height:44px;padding:0 14px}

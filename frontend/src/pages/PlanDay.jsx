@@ -44,6 +44,7 @@ function PlanCard({task,onToggle,toggling,onAdvance,advBusy,adv,onReassign,onCan
  const live=!['done','cancelled'].includes(task.status);
  const b=data.blocks.find(x=>x.id===s.block_id);
  const [priBusy,setPriBusy]=useState(false);
+ const [confirming,setConfirming]=useState(false);
  const setPri=async p=>{if(p===task.priority||priBusy)return;setPriBusy(true);
   try{await mutate('patch',`/tasks/${task.id}`,{priority:p});}catch{/* toasted by mutate */}finally{setPriBusy(false);}};
  return <div className="plan-card" data-testid={`plan-item-${task.id}`}>
@@ -57,7 +58,9 @@ function PlanCard({task,onToggle,toggling,onAdvance,advBusy,adv,onReassign,onCan
   {adv?.taskId===task.id&&<ul className="adv-report" data-testid={`plan-adv-report-${task.id}`}>{adv.results.map((r,i)=>{const u=data.units.find(x=>x.id===(r.unit_id||r.id));return <li key={i} className={r.error?'adv-err':''}>{u?`${t('blk')} ${u.block} · ${label(u)}`:(r.unit_label||r.unit_id||'—')} — {r.error?r.error:t('done')}</li>;})}</ul>}
   <div className="plan-item-actions">
    <button type="button" className="table-action" data-testid={`plan-reassign-${task.id}`} onClick={onReassign}>{t('reassign')}</button>
-   {live&&<button type="button" className="table-action danger" data-testid={`plan-cancel-${task.id}`} onClick={onCancel}>{t('cancel')}</button>}
+   {live&&(confirming
+    ?<span className="confirm-inline" data-testid={`plan-cancel-confirm-${task.id}`}><span>{t('cancelTaskConfirm')}</span><button type="button" className="table-action danger" data-testid={`plan-cancel-yes-${task.id}`} onClick={()=>{setConfirming(false);onCancel();}}>{t('yes')}</button><button type="button" className="table-action" data-testid={`plan-cancel-no-${task.id}`} onClick={()=>setConfirming(false)}>{t('no')}</button></span>
+    :<button type="button" className="table-action danger" data-testid={`plan-cancel-${task.id}`} onClick={()=>setConfirming(true)}>{t('cancel')}</button>)}
    {allChecked&&live&&<button type="button" className="advance-prompt" data-testid={`plan-advance-${task.id}`} disabled={advBusy===task.id} onClick={onAdvance}>{advBusy===task.id?<Loader2 className="spin" size={15}/>:<Check size={15}/>}{advBusy===task.id?t('advancing'):t('reviewAndAdvance')}</button>}
   </div>
  </div>;
@@ -112,7 +115,7 @@ export default function PlanDay(){
    else toast(msg);
   }catch(e){toast.error(errorText(e,t));}finally{setAdvBusy(null);}
  };
- const cancelTask=async task=>{if(!window.confirm(t('cancelTaskConfirm')))return;try{await mutate('post',`/tasks/${task.id}/transition`,{status:'cancelled'});toast.success(t('saved'));}catch{/* toasted by mutate */}};
+ const cancelTask=async task=>{try{await mutate('post',`/tasks/${task.id}/transition`,{status:'cancelled'});toast.success(t('saved'));}catch{/* toasted by mutate */}};
  if(!canPlan(user))return <div className="page-enter"><Empty text={t('noAccess')}/></div>;
  const nPlanned=plans.reduce((n,x)=>n+plannedUnitIds(x).length,0);
  const nDone=plans.reduce((n,x)=>n+completedUnitIds(x).length,0);

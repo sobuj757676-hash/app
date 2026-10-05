@@ -144,6 +144,8 @@ groupsLoadFailed:["Couldn't load the work list",'কাজের তালিক
 noPlanYet:['No assignments for this date yet','এই তারিখে এখনও কোনো দায়িত্ব নেই','该日期暂无任务分配'],
 reassign:['Reassign','পুনর্নির্ধারণ','重新分配'],
 cancelTaskConfirm:['Cancel this assignment?','এই দায়িত্ব বাতিল করবেন?','取消此任务分配？'],
+yes:['Yes','হ্যাঁ','是'],
+no:['No','না','否'],
 viewPlan:['View plan','পরিকল্পনা দেখুন','查看计划'],
 plannedToday:["Planned for today",'আজকের পরিকল্পিত কাজ','今日计划任务'],
 advancePrompt:['Advance {n} units past {stage}?','{stage} পার করে {n}টি ইউনিট এগিয়ে নেবেন?','将 {n} 个单元推进到“{stage}”之后？'],
