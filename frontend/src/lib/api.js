@@ -24,8 +24,18 @@ const _loc = l => l==='bn'?'bn-BD':l==='zh'?'zh-CN':'en-GB';
 export const fmtDate = (v, lang='en') => { try { return new Intl.DateTimeFormat(_loc(lang),{day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Singapore'}).format(new Date(v)); } catch { return String(v??''); } };
 export const fmtDateTime = (v, lang='en') => { try { return new Intl.DateTimeFormat(_loc(lang),{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Singapore'}).format(new Date(v)); } catch { return String(v??''); } };
 export const label = u => `#${String(u.level).padStart(2,'0')}-${u.number}`;
-export const percent = units => units.length ? Math.round(units.reduce((n,u)=>n+u.stage,0)/(units.length*9)*100) : 0;
-export const status = u => u.rto === 'rework' ? 'rework' : u.stage === 9 ? 'completed' : u.rto === 'pending' ? 'pending' : u.stage === 0 ? 'notStarted' : 'inProgress';
+export const percent = (units, stageCount) => units.length && stageCount ? Math.round(units.reduce((n,u)=>n+Math.min(u.stage,stageCount),0)/(units.length*stageCount)*100) : 0;
+export const status = (u, stageCount=9) => u.rto === 'rework' ? 'rework' : stageCount && u.stage >= stageCount ? 'completed' : u.rto === 'pending' ? 'pending' : u.stage === 0 ? 'notStarted' : 'inProgress';
+// Dynamic workflow stages (Part A). The backend carries the project's ordered
+// stage list on data.project.workflow_stages; these helpers resolve it with a
+// built-in 9-stage fallback so the UI keeps working before the backend ships.
+// stageName(stage, t): built-ins keep bn/zh via name_key; custom stages show
+// as typed in every language.
+export const stageName = (stage, t) => stage ? (stage.name_key ? t(stage.name_key) : stage.name) : '';
+export const DEFAULT_STAGES = [
+ {id:'s0',name:'Slab PVC laying',name_key:'stage0',requires_rto:false},{id:'s1',name:'Casting complete',name_key:'stage1',requires_rto:false},{id:'s2',name:'Point hacking',name_key:'stage2',requires_rto:false},{id:'s3',name:'Wire pulling',name_key:'stage3',requires_rto:false},{id:'s4',name:'GI/PVC & gang boxes',name_key:'stage4',requires_rto:false},{id:'s5',name:'RTO approval',name_key:'stage5',requires_rto:true},{id:'s6',name:'Cement plastering',name_key:'stage6',requires_rto:false},{id:'s7',name:'Accessories fitting',name_key:'stage7',requires_rto:false},{id:'s8',name:'Insulation testing',name_key:'stage8',requires_rto:false}];
+export const stagesOf = data => data?.project?.workflow_stages?.length ? data.project.workflow_stages : DEFAULT_STAGES;
+export const stageCountOf = data => stagesOf(data).length;
 // Common backend `detail` strings mapped to i18n keys. errorText(e, t) localizes
 // them when a t() is passed; without t it returns the raw detail (safe fallback).
 const DETAIL_I18N={
