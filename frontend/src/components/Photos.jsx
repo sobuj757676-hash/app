@@ -19,7 +19,7 @@ export function PhotoUpload({entityType,entityId,onUploaded,id}){
    const {data}=await api.post('/photos/upload',form);
    setFile(null);setPreview('');setCaption('');if(input.current)input.current.value='';
    toast.success(t('saved'));onUploaded&&onUploaded(data);
-  }catch(e){toast.error(errorText(e));}
+  }catch(e){toast.error(t('photoUploadFailed'));}
   finally{setBusy(false);}
  };
  return <div className="photo-upload" data-testid={id||'photo-upload'}>

@@ -1,7 +1,9 @@
+import {useEffect} from 'react';
 import {BrowserRouter,Routes,Route,Navigate,useLocation} from 'react-router-dom';
-import {LanguageProvider} from './lib/i18n';
+import {LanguageProvider,useLanguage} from './lib/i18n';
 import {AuthProvider,useAuth} from './lib/auth';
 import {WorkspaceProvider} from './lib/store';
+import {toast} from 'sonner';
 import {Toaster} from './components/ui/sonner';
 import {Layout} from './components/Layout';
 import {ForceChangePassword} from './pages/Login';
@@ -28,16 +30,21 @@ import Users from './pages/Users';
 import Login from './pages/Login';
 import './App.css';
 
+function DenyRedirect(){
+ const {t}=useLanguage();
+ useEffect(()=>{toast.info(t('noAccess'));},[t]);
+ return <Navigate to="/" replace/>;
+}
 function RequireAuth({children}){
  const {user,ready}=useAuth();const loc=useLocation();
  if(!ready)return <div className="loading-state" data-testid="auth-loading">…</div>;
  if(!user)return <Navigate to="/login" replace/>;
  if(user.must_change_password)return <div className="login-page"><ForceChangePassword onDone={()=>window.location.reload()}/></div>;
  const {role}=user,path=loc.pathname;
- if(role==='worker'&&!['/','/units','/defects','/tasks'].includes(path))return <Navigate to="/" replace/>;
- if(path==='/users'&&!['admin','manager'].includes(role))return <Navigate to="/" replace/>;
- if(path==='/expenses'&&role==='supervisor')return <Navigate to="/" replace/>;
- if(path.startsWith('/settings')&&role==='worker')return <Navigate to="/" replace/>;
+ if(role==='worker'&&!['/','/units','/defects','/tasks'].includes(path))return <DenyRedirect/>;
+ if(path==='/users'&&!['admin','manager'].includes(role))return <DenyRedirect/>;
+ if(path==='/expenses'&&role==='supervisor')return <DenyRedirect/>;
+ if(path.startsWith('/settings')&&role==='worker')return <DenyRedirect/>;
  return children;
 }
 function Home(){

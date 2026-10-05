@@ -4,7 +4,7 @@ import {Sheet,SheetContent,SheetHeader,SheetTitle,SheetDescription} from './ui/s
 import {useLanguage} from '../lib/i18n';
 import {useWorkspace} from '../lib/store';
 import {useAuth} from '../lib/auth';
-import {api,errorText,label} from '../lib/api';
+import {api,errorText,label,fmtDateTime} from '../lib/api';
 import {StatusBadge,Action,Empty} from './Common';
 import {PhotoUpload,PhotoGallery} from './Photos';
 import {TaskModal} from './TaskModal';
@@ -21,7 +21,7 @@ const mayTransition=(user,defect,next)=>{
 };
 
 export const DefectDrawer=({defectId,onClose})=>{
- const {t}=useLanguage();const {data,mutate,setSelectedUnit}=useWorkspace();const {user}=useAuth();const navigate=useNavigate();
+ const {t,lang}=useLanguage();const {data,mutate,setSelectedUnit}=useWorkspace();const {user}=useAuth();const navigate=useNavigate();
  const [directory,setDirectory]=useState([]),[assignee,setAssignee]=useState(''),[busy,setBusy]=useState(false),[note,setNote]=useState(''),[photoTick,setPhotoTick]=useState(0);
  const [linkedTasks,setLinkedTasks]=useState([]),[taskModal,setTaskModal]=useState(false);
  const defect=data?.defects.find(d=>d.id===defectId);
@@ -81,7 +81,7 @@ export const DefectDrawer=({defectId,onClose})=>{
    {canAssign&&<Action id="defect-followup-task" icon={Plus} secondary onClick={()=>setTaskModal(true)}>{t('followupTask')}</Action>}
   </div>
   <div className="drawer-section"><h3><History size={16}/>{t('defectHistory')}</h3>
-   <div className="unit-history">{defect.history?.length?defect.history.slice().reverse().map((h,i)=><div key={i} data-testid={`defect-history-${i}`}><span className="history-dot"/><strong>{t(h.status)}</strong><p>{h.note||'—'}</p><small>{h.by_name}</small><time>{new Date(h.at).toLocaleString()}</time></div>):<Empty text={t('noHistory')}/>}</div>
+   <div className="unit-history">{defect.history?.length?defect.history.slice().reverse().map((h,i)=><div key={i} data-testid={`defect-history-${i}`}><span className="history-dot"/><strong>{t(h.status)}</strong><p>{h.note||'—'}</p><small>{h.by_name}</small><time>{fmtDateTime(h.at,lang)}</time></div>):<Empty text={t('noHistory')}/>}</div>
   </div>
  </SheetContent></Sheet>
  {taskModal&&<TaskModal open defectId={defect.id} requireAssignee={false} onClose={()=>{setTaskModal(false);api.get(`/defects/${defect.id}/tasks`).then(r=>setLinkedTasks(r.data)).catch(()=>{});}}/>}

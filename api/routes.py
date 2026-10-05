@@ -358,7 +358,7 @@ async def export(pid: str, kind: str, user: dict = Depends(get_current_user)):
     await get('projects', pid)
     fields = {'units': ['block','level','number','unit_type','stage','rto','assigned_to','note'], 'workers':['name','trade','block','daily_rate','phone'], 'materials':['name','unit','stock','minimum','unit_cost'], 'expenses':['date','description','category','amount','block','reference'], 'inspections':['block','unit_label','inspector','date','status','note'], 'tests':['block','unit_label','point_name','voltage','l_n','l_e','n_e','result','tested_by'], 'attendance':['worker_id','date','status','hours','daily_rate']}
     if kind not in fields: raise HTTPException(400, 'Invalid export type')
-    if is_worker(user) and kind == 'expenses': raise HTTPException(403, 'You do not have permission for this action')
+    if kind == 'expenses' and (is_worker(user) or user.get('role') == 'supervisor'): raise HTTPException(403, 'You do not have permission for this action')
     filt = {'project_id': pid}
     if kind == 'expenses':
         filt['deleted'] = {'$ne': True}

@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
 import {Grid2X2,List,Search,ArrowUpRight,Check,Clock3,AlertTriangle,Building2} from 'lucide-react';
 import {useLanguage} from '../lib/i18n';
@@ -10,7 +10,7 @@ import {PageTitle,ExportButton,Action,StatusBadge,ProgressBar,Empty,FormModal} f
 const statuses=['completed','inProgress','pending','rework','notStarted'];
 export default function UnitTracker(){
  const {t}=useLanguage();
- const {data,setSelectedUnit,mutate}=useWorkspace();
+ const {data,selectedUnit,setSelectedUnit,mutate}=useWorkspace();
  const {user}=useAuth();const ro=!canWrite(user);
  const [params,setParams]=useSearchParams();
  const [block,setBlock]=useState(params.get('block')||(params.has('q')?'all':data.blocks[0]?.id||''));
@@ -19,11 +19,20 @@ export default function UnitTracker(){
  const [filter,setFilter]=useState('all');
  const [level,setLevel]=useState('all');
  const [modal,setModal]=useState(false);
+ const wasOpen=useRef(false);
+ // Deep-link: ?unit=<uid> opens the drawer (and selects its block tab) on load/param change
  useEffect(()=>{
   setQ(params.get('q')||'');
   if(params.get('block'))setBlock(params.get('block'));
   else if(params.has('q')){setBlock('all');setLevel('all');setFilter('all');}
- },[params]);
+  const uid=params.get('unit');
+  if(uid){const u=data.units.find(x=>x.id===uid);if(u){setBlock(u.block_id);setSelectedUnit(uid);}}
+ },[params,data.units,setSelectedUnit]);
+ // Clear ?unit= when the drawer closes (guarded so a fresh deep-link load isn't wiped)
+ useEffect(()=>{
+  if(selectedUnit){wasOpen.current=true;}
+  else if(wasOpen.current){wasOpen.current=false;if(params.get('unit')){const p=Object.fromEntries(params.entries());delete p.unit;setParams(p);}}
+ },[selectedUnit,params,setParams]);
  const allBlocks=block==='all';
  const chosen=data.blocks.find(b=>b.id===block);
  const blockUnits=data.units.filter(u=>allBlocks||u.block_id===chosen?.id);
@@ -31,7 +40,8 @@ export default function UnitTracker(){
  const floors=[...new Set(blockUnits.map(u=>u.level))].sort((a,b)=>b-a);
  const stacks=[...new Set(blockUnits.map(u=>u.number))].sort((a,b)=>Number(a)-Number(b));
  const cells=useMemo(()=>Object.fromEntries(filtered.map(u=>[`${u.level}-${u.number}`,u])),[filtered]);
- const chooseBlock=id=>{setBlock(id);setLevel('all');setParams({block:id});};
+ const chooseBlock=id=>{setBlock(id);setLevel('all');setParams({...Object.fromEntries(params.entries()),block:id});};
+ const openUnit=u=>{setSelectedUnit(u.id);setParams({block:u.block_id,unit:u.id});};
  return <div className="page-enter">
   <PageTitle title={t('units')} subtitle={t('blockOverview')}>
    <ExportButton/>{!ro&&<Action id="add-unit" onClick={()=>setModal(true)} disabled={!chosen}>{t('addUnit')}</Action>}
@@ -56,13 +66,13 @@ export default function UnitTracker(){
     <div className="matrix-corner">{t('level')}</div>{stacks.map(n=><div className="matrix-column" key={n}>#{n}</div>)}
     {floors.filter(l=>level==='all'||l===Number(level)).map(l=><div className="matrix-row" key={l}>
      <div className="matrix-level">{String(l).padStart(2,'0')}</div>
-     {stacks.map(n=>{const u=cells[`${l}-${n}`];return u?<button key={n} data-testid={`matrix-unit-${u.id}`} aria-label={`${t('block')} ${u.block} ${label(u)} ${t(status(u))}`} title={`${label(u)} · ${t(u.stage===9?'completed':`stage${u.stage}`)}`} className={`unit-cell ${status(u)}`} onClick={()=>setSelectedUnit(u.id)}>{u.stage===9?<Check size={16}/>:u.rto==='pending'?<Clock3 size={16}/>:u.rto==='rework'?<AlertTriangle size={16}/>:<span>{u.stage}<small>/9</small></span>}</button>:<div className="unit-cell unavailable" key={n}>—</div>;})}
+     {stacks.map(n=>{const u=cells[`${l}-${n}`];return u?<button key={n} data-testid={`matrix-unit-${u.id}`} aria-label={`${t('block')} ${u.block} ${label(u)} ${t(status(u))}`} title={`${label(u)} · ${t(u.stage===9?'completed':`stage${u.stage}`)}`} className={`unit-cell ${status(u)}`} onClick={()=>openUnit(u)}>{u.stage===9?<Check size={16}/>:u.rto==='pending'?<Clock3 size={16}/>:u.rto==='rework'?<AlertTriangle size={16}/>:<span>{u.stage}<small>/9</small></span>}</button>:<div className="unit-cell unavailable" key={n}>—</div>;})}
     </div>)}
    </div></div>:
    <div className="table-scroll"><table data-testid="units-table">
     <thead><tr>{['block','unit','unitType','currentStage','team','status','progress'].map(k=><th key={k}>{t(k)}</th>)}<th/></tr></thead>
     <tbody>{filtered.map(u=><tr key={u.id} data-testid={`unit-row-${u.id}`}>
-     <td>{u.block}</td><td><button className="unit-link" data-testid={`open-unit-${u.id}`} onClick={()=>setSelectedUnit(u.id)}>{label(u)}</button></td><td>{u.unit_type}</td><td>{t(u.stage===9?'completed':`stage${u.stage}`)}</td><td>{u.assigned_to||t('unassigned')}</td><td><StatusBadge id={`unit-status-${u.id}`} value={status(u)}/></td><td><span className="mono">{u.stage}/9</span></td><td><button className="icon-button" title={t('view')} data-testid={`unit-detail-${u.id}`} onClick={()=>setSelectedUnit(u.id)}><ArrowUpRight size={17}/></button></td>
+     <td>{u.block}</td><td><button className="unit-link" data-testid={`open-unit-${u.id}`} onClick={()=>openUnit(u)}>{label(u)}</button></td><td>{u.unit_type}</td><td>{t(u.stage===9?'completed':`stage${u.stage}`)}</td><td>{u.assigned_to||t('unassigned')}</td><td><StatusBadge id={`unit-status-${u.id}`} value={status(u)}/></td><td><span className="mono">{u.stage}/9</span></td><td><button className="icon-button" title={t('view')} data-testid={`unit-detail-${u.id}`} onClick={()=>openUnit(u)}><ArrowUpRight size={17}/></button></td>
     </tr>)}</tbody>
    </table></div>
   }

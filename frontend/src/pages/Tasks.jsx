@@ -12,7 +12,7 @@ import {toast} from 'sonner';
 const PRIS=['low','medium','high','urgent'];
 const NEXT={todo:['in_progress','cancelled'],in_progress:['todo','done','cancelled'],done:[],cancelled:[]};
 const canCreate=u=>['admin','manager','engineer','supervisor'].includes(u?.role);
-const mayMove=(u,task,next)=>{
+export const mayMove=(u,task,next)=>{
  if(['admin','manager','engineer','supervisor'].includes(u?.role))return true;
  return u?.role==='worker'&&task.assigned_to===u.id&&next!=='cancelled';
 };

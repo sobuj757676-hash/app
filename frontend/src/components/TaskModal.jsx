@@ -21,7 +21,6 @@ export function TaskModal({open,onClose,defectId=null,requireAssignee=true}){
  const [defectQ,setDefectQ]=useState('');
  const [busy,setBusy]=useState(false);
  useEffect(()=>{if(open){setV({title:'',description:'',assigned_to:'',priority:'medium',unit_id:'',defect_id:'',due_date:''});setDefectQ('');api.get('/auth/directory').then(r=>setDirectory(r.data)).catch(()=>{});}},[open]);
- useEffect(()=>{if(open&&directory.length)setV(p=>({...p,assigned_to:p.assigned_to||directory[0].id}));},[open,directory]);
  const set=(k,val)=>setV(p=>({...p,[k]:val}));
  const lockedDefect=defectId?data?.defects.find(d=>d.id===defectId):null;
  const defectOptions=(data?.defects||[]).filter(d=>`${d.title} ${d.status} ${d.severity}`.toLowerCase().includes(defectQ.toLowerCase()));

@@ -3,10 +3,10 @@ import {CheckCircle2,Clock3,CalendarDays,ListChecks,OctagonAlert} from 'lucide-r
 import {useAuth} from '../lib/auth';
 import {useWorkspace} from '../lib/store';
 import {useLanguage} from '../lib/i18n';
-import {api,today,percent,errorText} from '../lib/api';
+import {api,today,percent,errorText,fmtDate} from '../lib/api';
 import {PageTitle,Metric,ProgressBar,StatusBadge,Empty} from '../components/Common';
 import {DefectDrawer} from '../components/DefectDrawer';
-import {DefectChip} from './Tasks';
+import {DefectChip,mayMove} from './Tasks';
 import {toast} from 'sonner';
 
 const TASK_NEXT={todo:['in_progress'],in_progress:['todo','done'],done:[],cancelled:[]};
@@ -14,9 +14,10 @@ const DEFECT_NEXT={assigned:['in_progress'],in_progress:['rectified']};
 const LIVE_DEFECT=['open','assigned','in_progress','rectified'];
 
 export default function WorkerHome(){
- const {t}=useLanguage();const {user}=useAuth();const {data,refresh,mutate}=useWorkspace();
+ const {t,lang}=useLanguage();const {user}=useAuth();const {data,refresh,mutate}=useWorkspace();
  const [me,setMe]=useState(null),[status,setStatus]=useState('present'),[hours,setHours]=useState(8),[busy,setBusy]=useState(false);
  const [filter,setFilter]=useState('all'),[defectId,setDefectId]=useState(null);
+ const [moveBusy,setMoveBusy]=useState([]);
  useEffect(()=>{api.get('/workers/me').then(r=>{setMe(r.data);if(r.data.today_attendance){setStatus(r.data.today_attendance.status);setHours(r.data.today_attendance.hours);}}).catch(()=>{});},[]);
  const marked=me?.today_attendance;
  const submit=async()=>{
@@ -26,14 +27,16 @@ export default function WorkerHome(){
   finally{setBusy(false);}
  };
  const moveTask=async(task,next)=>{
+  setMoveBusy(b=>b.includes(task.id)?b:[...b,task.id]);
   try{await mutate('post',`/tasks/${task.id}/transition`,{status:next});toast.success(t('saved'));}
   catch{/* toasted by mutate */}
+  finally{setMoveBusy(b=>b.filter(id=>id!==task.id));}
  };
  const moveDefect=async(defect,next)=>{
   try{await mutate('post',`/defects/${defect.id}/transition`,{status:next});toast.success(t('saved'));}
   catch{/* toasted by mutate */}
  };
- const myTasks=(data.tasks||[]).filter(x=>!['done','cancelled'].includes(x.status)).map(x=>({...x,kind:'task'}));
+ const myTasks=(data.tasks||[]).filter(x=>x.assigned_to===user?.id&&!['done','cancelled'].includes(x.status)).map(x=>({...x,kind:'task'}));
  const myDefects=(data.defects||[]).filter(d=>d.assigned_to===user?.id&&LIVE_DEFECT.includes(d.status)).map(d=>({...d,kind:'defect'}));
  const urgency=i=>{
   const live=i.kind==='task'?!['done','cancelled'].includes(i.status):LIVE_DEFECT.includes(i.status);
@@ -52,7 +55,7 @@ export default function WorkerHome(){
   .sort((a,b)=>urgency(a)-urgency(b)||byDue(a,b));
  const pending=data.inspections.filter(i=>i.status==='pending').length;
  return <div className="page-enter worker-home" data-testid="worker-home">
-  <PageTitle title={`${t('hello')}, ${user?.name?.split(' ')[0]||''}`} subtitle={`${t('today')}: ${today()}${me?.trade?` · ${me.trade}`:''}`}/>
+  <PageTitle title={`${t('hello')}, ${user?.name?.split(' ')[0]||''}`} subtitle={`${t('today')}: ${fmtDate(new Date(),lang)}${me?.trade?` · ${me.trade}`:''}`}/>
   <section className="worker-attendance" data-testid="worker-attendance-card">
    <h2><CalendarDays size={18}/>{t('myAttendance')}</h2>
    {marked&&<div className="attendance-marked" data-testid="attendance-today-status"><CheckCircle2 size={17}/>{t(marked.status)} · {marked.hours} {t('hours')}</div>}
@@ -79,7 +82,7 @@ export default function WorkerHome(){
       <div><strong>{i.title}</strong><small>{i.unit_label||''}{i.due_date?` · ${i.due_date}`:''}</small></div>
       {i.defect&&<DefectChip defect={i.defect} onOpen={()=>setDefectId(i.defect.id)}/>}
       <StatusBadge value={i.status} id={`worker-task-status-${i.id}`}/>
-      <div className="worker-task-actions">{(TASK_NEXT[i.status]||[]).map(s=><button key={s} type="button" data-testid={`worker-task-${s}-${i.id}`} className="attend-submit small" onClick={()=>moveTask(i,s)}>{t(s==='todo'?'todo':s)}</button>)}</div>
+      <div className="worker-task-actions">{(TASK_NEXT[i.status]||[]).filter(s=>mayMove(user,i,s)).map(s=><button key={s} type="button" data-testid={`worker-task-${s}-${i.id}`} className="attend-submit small" disabled={moveBusy.includes(i.id)} onClick={()=>moveTask(i,s)}>{t(s==='todo'?'todo':s)}</button>)}</div>
      </div>
     :<div key={i.id} className="worker-task worker-defect" data-testid={`worker-defect-${i.id}`}>
       <div><strong><OctagonAlert size={14}/> {i.title}</strong><small>{i.block?`Blk ${i.block} · #${String(i.level).padStart(2,'0')}-${i.number}`:''}{i.due_date?` · ${i.due_date}`:''}</small></div>
