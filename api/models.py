@@ -193,6 +193,10 @@ class TaskIn(BaseModel):
     plan_date: date | None = None
     priority: Literal['low', 'medium', 'high', 'urgent'] = 'medium'
     due_date: date | None = None
+    # Execution state for the daily-plan redesign: unit ids the assignee(s)
+    # have marked done. Server validates every id ⊆ scope.unit_ids (when
+    # scope is present), dedupes, preserves order.
+    completed_unit_ids: list[str] = Field(default_factory=list)
 
 class TaskPatchIn(BaseModel):
     title: str | None = Field(default=None, min_length=2, max_length=150)
@@ -204,6 +208,8 @@ class TaskPatchIn(BaseModel):
     scope: TaskScopeIn | None = None
     assignees: list[str] | None = Field(default=None, min_length=1, max_length=50)
     defect_id: str | None = None
+    # PATCH replaces the whole list; server validates ids ⊆ scope.unit_ids.
+    completed_unit_ids: list[str] | None = None
 
 class TaskTransitionIn(BaseModel):
     status: Literal['todo', 'in_progress', 'done', 'cancelled']

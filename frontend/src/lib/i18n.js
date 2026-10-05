@@ -150,6 +150,29 @@ advancePrompt:['Advance {n} units past {stage}?','{stage} পার করে {n
 advancing:['Advancing…','এগিয়ে নেওয়া হচ্ছে…','推进中…'],
 advanced:['Already advanced','ইতিমধ্যে এগিয়ে নেওয়া হয়েছে','已推进'],
 advDone:['Advanced {ok} of {n} units','{n}টির মধ্যে {ok}টি ইউনিট এগিয়ে নেওয়া হয়েছে','已推进 {n} 个单元中的 {ok} 个'],
+// ---- Daily-plan tracker compose (FRONTEND TRACKER agent, 2026-10-05) ----
+// Keep new compose-flow keys inside this block so the PlanDay agent's keys
+// land elsewhere and collisions are visible at a glance. NOTE: addToPlan
+// already exists above ("Add to today's plan") and is intentionally reused,
+// not redefined here.
+selectMode:['Select','নির্বাচন','选择'],
+selectedCount:['{n} selected','{n}টি নির্বাচিত','已选择 {n} 个'],
+planSheetTitle:['Plan work','কাজের পরিকল্পনা','安排工作'],
+workersLabel:['Workers','শ্রমিক','施工人员'],
+noteOptional:['Note (optional)','মন্তব্য (ঐচ্ছিক)','备注（可选）'],
+// ---- end tracker compose block ----
+// ---- Daily-plan cards/strip/carry-over (FRONTEND PLAN agent, 2026-10-05) ----
+carriedOver:['Yesterday: {n} units unfinished','গতকাল: {n}টি ইউনিট অসমাপ্ত','昨天：{n} 个单元未完成'],
+addToToday:['Add to today','আজকে যোগ করুন','加入今日'],
+reviewAndAdvance:['Review & advance','যাচাই করে এগিয়ে নিন','审核并推进'],
+staleStage:['Stage changed','ধাপ বদলেছে','工序已变更'],
+planPlanned:['Planned','পরিকল্পিত','已计划'],
+planDone:['Done','সম্পন্ন','已完成'],
+planRemaining:['Remaining','অবশিষ্ট','剩余'],
+unitProgress:['{done}/{total} done','{done}/{total}টি সম্পন্ন','{done}/{total} 已完成'],
+unitSing:['unit','ইউনিট','单元'],
+addWork:['Add work','কাজ যোগ করুন','添加工作'],
+// ---- end plan cards block ----
 };
 const Context=createContext(null);
 export function LanguageProvider({children}) {const [lang,setLangState]=useState(()=>localStorage.getItem('voltcraft-language')||'en'); const setLang=l=>{setLangState(l);localStorage.setItem('voltcraft-language',l);document.documentElement.lang=l;};const index={en:0,bn:1,zh:2}[lang]??0;return <Context.Provider value={{lang,setLang,t:key=>words[key]?.[index]||words[key]?.[0]||key}}>{children}</Context.Provider>;}

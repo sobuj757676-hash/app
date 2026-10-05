@@ -4,7 +4,8 @@ import {useAuth} from '../lib/auth';
 import {useWorkspace} from '../lib/store';
 import {useLanguage} from '../lib/i18n';
 import {api,today,percent,errorText,fmtDate,stagesOf} from '../lib/api';
-import {isAssigned,PRIW} from '../lib/planTasks';
+import {isAssigned,PRIW,toggleCompletedIds,completedUnitIds} from '../lib/planTasks';
+import {UnitCheckboxes,StaleFlag,PlanProgress} from '../components/PlanUnitChips';
 import {planScopeText} from './PlanDay';
 import {PageTitle,Metric,ProgressBar,StatusBadge,Empty,Action} from '../components/Common';
 import {DefectDrawer} from '../components/DefectDrawer';
@@ -25,7 +26,19 @@ const isPlannedToday=i=>(i.kind==='planned'||(!i.kind&&i.plan_date))&&i.plan_dat
 // Due-date line with a red clock + "Overdue" badge when past due (same language as Tasks.jsx).
 function DueLine({t,date,overdue}){return <span className={`mono due-line${overdue?' overdue-text':''}`}><Clock3 size={12}/>{date}{overdue&&<b className="overdue-badge">{t('overdue')}</b>}</span>;}
 
-function WorkerTaskRow({i,t,user,data,moveBusy,moveTask,onOpenDefect}){
+function WorkerTaskRow({i,t,user,data,moveBusy,moveTask,onOpenDefect,toggleUnit,planBusy}){
+ // Today's planned assignment: one card — where/what/how many/who, with
+ // 44px unit checkboxes, n/m progress and the staleness flag.
+ if(i.kind==='planned'&&i.scope){
+  return <div className="worker-task worker-plan" data-testid={`worker-task-${i.id}`}>
+   <div className="task-top"><StatusBadge value={i.status} id={`worker-task-status-${i.id}`}/><span className={`priority-tag ${i.priority}`}>{t(i.priority)}</span></div>
+   <div><strong>{i.title}</strong><small className="scope-line" data-testid={`worker-scope-${i.id}`}>{planScopeText(i,data,t)}</small><PlanProgress task={i} testId={`worker-progress-${i.id}`}/>{i.due_date&&<DueLine t={t} date={i.due_date} overdue={isOverdue(i)}/>}</div>
+   {i.defect&&<DefectChip defect={i.defect} onOpen={()=>onOpenDefect(i.defect.id)}/>}
+   <StaleFlag task={i} data={data} testPrefix={`worker-stale-${i.id}`}/>
+   <UnitCheckboxes task={i} data={data} checked={completedUnitIds(i)} busy={planBusy} onToggle={id=>toggleUnit(i,id)} testPrefix={`worker-unit-${i.id}`}/>
+   <div className="worker-task-actions">{(TASK_NEXT[i.status]||[]).filter(s=>mayMove(user,i,s)).map(s=><button key={s} type="button" data-testid={`worker-task-${s}-${i.id}`} className="attend-submit small" disabled={moveBusy.includes(i.id)} onClick={()=>moveTask(i,s)}>{t(s==='todo'?'todo':s)}</button>)}</div>
+  </div>;
+ }
  return <div className="worker-task" data-testid={`worker-task-${i.id}`}>
   <div><strong>{i.title}</strong>{i.scope?<small className="scope-line" data-testid={`worker-scope-${i.id}`}>{planScopeText(i,data,t)}</small>:i.unit_label&&<small>{i.unit_label}</small>}{i.due_date&&<DueLine t={t} date={i.due_date} overdue={isOverdue(i)}/>}</div>
   {i.defect&&<DefectChip defect={i.defect} onOpen={()=>onOpenDefect(i.defect.id)}/>}
@@ -39,6 +52,7 @@ export default function WorkerHome(){
  const [me,setMe]=useState(null),[status,setStatus]=useState('present'),[hours,setHours]=useState(8),[busy,setBusy]=useState(false);
  const [filter,setFilter]=useState('all'),[defectId,setDefectId]=useState(null),[report,setReport]=useState(false);
  const [moveBusy,setMoveBusy]=useState([]);
+ const [planBusy,setPlanBusy]=useState(null);
  useEffect(()=>{api.get('/workers/me').then(r=>{setMe(r.data);if(r.data.today_attendance){setStatus(r.data.today_attendance.status);setHours(r.data.today_attendance.hours);}}).catch(()=>{});},[]);
  const marked=me?.today_attendance;
  const submit=async()=>{
@@ -56,6 +70,13 @@ export default function WorkerHome(){
  const moveDefect=async(defect,next)=>{
   try{await mutate('post',`/defects/${defect.id}/transition`,{status:next});toast.success(t('saved'));}
   catch{/* toasted by mutate */}
+ };
+ // Worker checks off her own completed units on a planned task (full-list PATCH).
+ const toggleUnit=async(task,id)=>{
+  if(planBusy)return;setPlanBusy(task.id);
+  try{await mutate('patch',`/tasks/${task.id}`,{completed_unit_ids:toggleCompletedIds(task,id)});}
+  catch{/* toasted by mutate */}
+  finally{setPlanBusy(null);}
  };
  const myTasks=(data.tasks||[]).filter(x=>isAssigned(x,user?.id)&&!['done','cancelled'].includes(x.status)).map(x=>({...x,wkind:'task'}));
  const myDefects=(data.defects||[]).filter(d=>d.assigned_to===user?.id&&LIVE_DEFECT.includes(d.status)).map(d=>({...d,wkind:'defect'}));
@@ -103,10 +124,10 @@ const sc=stagesOf(data).length||1;
    </div>
    {showPlan&&planToday.length>0&&<div className="plan-pinned" data-testid="planned-today">
     <h3><CalendarDays size={16}/>{t('plannedToday')} <span className="count-pill">{planToday.length}</span></h3>
-    {planToday.map(i=><WorkerTaskRow key={i.id} i={i} t={t} user={user} data={data} moveBusy={moveBusy} moveTask={moveTask} onOpenDefect={setDefectId}/>)}
+    {planToday.map(i=><WorkerTaskRow key={i.id} i={i} t={t} user={user} data={data} moveBusy={moveBusy} moveTask={moveTask} onOpenDefect={setDefectId} toggleUnit={toggleUnit} planBusy={planBusy}/>)}
    </div>}
    {work.length?work.map(i=>i.wkind==='task'
-    ?<WorkerTaskRow key={i.id} i={i} t={t} user={user} data={data} moveBusy={moveBusy} moveTask={moveTask} onOpenDefect={setDefectId}/>
+    ?<WorkerTaskRow key={i.id} i={i} t={t} user={user} data={data} moveBusy={moveBusy} moveTask={moveTask} onOpenDefect={setDefectId} toggleUnit={toggleUnit} planBusy={planBusy}/>
     :<div key={i.id} className="worker-task worker-defect" data-testid={`worker-defect-${i.id}`}>
       <div><strong><OctagonAlert size={14}/> {i.title}</strong>{i.block&&<small>{`Blk ${i.block} · #${String(i.level).padStart(2,'0')}-${i.number}`}</small>}{i.due_date&&<DueLine t={t} date={i.due_date} overdue={isOverdue(i)}/>}</div>
       <span className={`severity-tag ${i.severity}`}>{t(i.severity)}</span>

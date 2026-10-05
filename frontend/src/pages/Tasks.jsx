@@ -33,12 +33,13 @@ function TaskCard({task,onOpenDefect,onOpenPlan,highlight}){
  const nexts=(NEXT[task.status]||[]).filter(s=>mayMove(user,task,s));
  const move=async s=>{setBusy(true);try{await mutate('post',`/tasks/${task.id}/transition`,{status:s});toast.success(t('saved'));}catch{}finally{setBusy(false);};};
  const overdue=task.due_date&&task.due_date<today()&&!['done','cancelled'].includes(task.status);
+ const prog=task.kind==='planned'&&task.scope?t('unitProgress').replace('{done}',String((task.completed_unit_ids||[]).length)).replace('{total}',String((task.scope?.unit_ids||[]).length)):null;
  return <div ref={ref} className={`task-card ${overdue?'overdue':''} ${highlight?'task-highlight':''}`} data-testid={`task-${task.id}`}>
   <div className="task-top"><StatusBadge value={task.status} id={`task-status-${task.id}`}/><span className={`priority-tag ${task.priority}`}>{t(task.priority)}</span></div>
   <strong data-testid={`task-title-${task.id}`}>{task.title}</strong>
   {task.description&&<p className="task-desc">{task.description}</p>}
   {task.defect&&<div className="task-defect-row"><DefectChip defect={task.defect} onOpen={()=>onOpenDefect&&onOpenDefect(task.defect.id)}/></div>}
-  <div className="task-meta"><span>{assigneeNames(task,t)}</span>{task.kind==='planned'&&task.scope&&<span>{planScopeText(task,data,t)}</span>}{task.unit_label&&<span>{task.unit_label}</span>}{task.due_date&&<span className={`mono ${overdue?'overdue-text':''}`}><Clock3 size={12}/>{task.due_date}</span>}{task.kind==='planned'&&task.plan_date&&<button type="button" className="text-link" data-testid={`task-plan-link-${task.id}`} onClick={()=>onOpenPlan&&onOpenPlan(task.plan_date)}>{t('viewPlan')} · {task.plan_date}</button>}</div>
+  <div className="task-meta"><span>{assigneeNames(task,t)}</span>{prog&&<span>{planScopeText(task,data,t)} <b className="mono" data-testid={`task-progress-${task.id}`}>{prog}</b></span>}{task.unit_label&&<span>{task.unit_label}</span>}{task.due_date&&<span className={`mono ${overdue?'overdue-text':''}`}><Clock3 size={12}/>{task.due_date}</span>}{task.kind==='planned'&&task.plan_date&&<button type="button" className="text-link" data-testid={`task-plan-link-${task.id}`} onClick={()=>onOpenPlan&&onOpenPlan(task.plan_date)}>{t('viewPlan')} · {task.plan_date}</button>}</div>
   {nexts.length>0&&<div className="transition-buttons">{nexts.map(s=><button key={s} type="button" className="table-action" data-testid={`task-to-${s}-${task.id}`} disabled={busy} onClick={()=>move(s)}>{t(s==='todo'?'todo':s)}</button>)}</div>}
  </div>;
 }

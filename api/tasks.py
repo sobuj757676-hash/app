@@ -73,6 +73,19 @@ def _defect_summary(defect: dict) -> dict:
             'status': defect['status'], 'severity': defect['severity']}
 
 
+def _validate_completed_unit_ids(scope: dict | None, ids: list[str]) -> list[str]:
+    """Dedupe (order preserved) and validate completed unit ids against the
+    task scope. Raises 400 if any id is not in scope.unit_ids (when scope
+    is present)."""
+    deduped = list(dict.fromkeys(ids))
+    if scope:
+        allowed = set(scope.get('unit_ids') or [])
+        for uid in deduped:
+            if uid not in allowed:
+                raise HTTPException(400, f'Completed unit not in task scope: {uid}')
+    return deduped
+
+
 async def _attach_defects(docs: list[dict]) -> list[dict]:
     """Embed defect:{id,title,status,severity} on tasks that link one. Batched."""
     ids = {d.get('defect_id') for d in docs if d.get('defect_id')}
@@ -103,10 +116,13 @@ async def _create_task(*, pid: str, defect_id: str | None, title: str,
                        assignees: list[str] | None, priority: str,
                        due_date, user: dict,
                        kind: str = 'adhoc', scope: dict | None = None,
-                       plan_date=None) -> dict:
+                       plan_date=None, completed_unit_ids: list[str] | None = None) -> dict:
     """Shared task creation used by both POST endpoints. assignees optional
     (empty = unassigned). All assignees are notified."""
     await get('projects', pid)
+    # Planned tasks carry a single date: due_date defaults to plan_date.
+    if kind == 'planned' and due_date is None and plan_date is not None:
+        due_date = plan_date
     people = await _resolve_assignees(assignees)
     unit_label = ''
     if unit_id:
@@ -115,6 +131,7 @@ async def _create_task(*, pid: str, defect_id: str | None, title: str,
             raise HTTPException(400, 'Unit does not belong to this project')
         unit_label = f'Blk {unit["block"]} · #{unit["level"]:02}-{unit["number"]}'
     defect = await _validate_defect_link(pid, defect_id) if defect_id else None
+    done_ids = _validate_completed_unit_ids(scope, completed_unit_ids or [])
     doc = {
         'id': uid(), 'project_id': pid, 'unit_id': unit_id, 'unit_label': unit_label,
         'defect_id': defect_id,
@@ -122,6 +139,7 @@ async def _create_task(*, pid: str, defect_id: str | None, title: str,
         'assignees': [a['id'] for a in people],
         'assignee_names': [a['name'] for a in people],
         'kind': kind, 'scope': scope,
+        'completed_unit_ids': done_ids,
         'plan_date': plan_date.isoformat() if plan_date else None,
         'status': 'todo', 'priority': priority,
         'due_date': due_date.isoformat() if due_date else None,
@@ -151,7 +169,8 @@ async def create_task(pid: str, data: TaskIn,
                               description=data.description, unit_id=data.unit_id,
                               assignees=data.assignees, priority=data.priority,
                               due_date=data.due_date, user=user,
-                              kind=data.kind, scope=scope, plan_date=data.plan_date)
+                              kind=data.kind, scope=scope, plan_date=data.plan_date,
+                              completed_unit_ids=data.completed_unit_ids)
 
 
 @router.post('/defects/{id}/tasks', response_model=Record)
@@ -203,10 +222,18 @@ async def list_tasks(pid: str, user: dict = Depends(get_current_user),
 
 @router.patch('/tasks/{id}', response_model=Record)
 async def edit_task(id: str, data: TaskPatchIn,
-                    user: dict = Depends(require_roles('admin', 'manager', 'engineer', 'supervisor'))):
+                    user: dict = Depends(require_roles(*OPS_ROLES, 'worker'))):
     task = await get('tasks', id)
     dump = data.model_dump(exclude_unset=True)
+    # Workers may PATCH only completed_unit_ids, and only on tasks where
+    # they are an assignee. Any other field (or an unassigned task) → 403.
+    if is_worker(user):
+        if set(dump) - {'completed_unit_ids'}:
+            raise HTTPException(403, 'You do not have permission for this action')
+        if user.get('id') not in (task.get('assignees') or []):
+            raise HTTPException(403, 'You do not have permission for this action')
     patch = {}
+    scope_now = task.get('scope')  # scope completed ids are validated against
     for k, v in dump.items():
         if k in ('due_date', 'plan_date'):
             patch[k] = v.isoformat() if v else None
@@ -215,7 +242,12 @@ async def edit_task(id: str, data: TaskPatchIn,
         elif k == 'assignees':
             continue  # handled below (validated + denormalized)
         elif k == 'scope':
-            patch[k] = await _validate_scope(task['project_id'], data.scope) if v is not None else None
+            scope_now = await _validate_scope(task['project_id'], data.scope) \
+                if v is not None else None
+            patch[k] = scope_now
+        elif k == 'completed_unit_ids':
+            # Replaces the whole list; validated against the (possibly new) scope.
+            patch[k] = _validate_completed_unit_ids(scope_now, v or [])
         elif v is not None:
             patch[k] = v
     if 'defect_id' in dump:
