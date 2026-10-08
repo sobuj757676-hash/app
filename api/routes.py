@@ -243,42 +243,23 @@ async def stage_groups(pid: str, user: dict = Depends(require_roles(*OPS_ROLES))
 @router.post('/projects/{pid}/units/bulk-advance')
 async def bulk_advance(pid: str, data: BulkAdvanceIn,
                        user: dict = Depends(require_roles(*OPS_ROLES))):
-    """Advance many units to a target stage at once. The RTO gate is enforced
-    per unit: a unit may not pass a requires_rto stage without RTO approval.
-    Returns per-unit results; failures never block the rest."""
-    project = await _project_with_stages(pid)
-    stages = project['workflow_stages']
-    if data.to_stage >= len(stages):
-        raise HTTPException(400, f'to_stage must be below {len(stages)}')
+    """Exactly one valid stage per unit, with the same gates as Unit Tracker."""
+    from unit_workflow import advance_unit
+    stages = (await _project_with_stages(pid))['workflow_stages']
+    if not 1 <= data.to_stage <= len(stages):
+        raise HTTPException(400, f'to_stage must be between 1 and {len(stages)}')
     results = []
     for unit_id in dict.fromkeys(data.unit_ids):
         try:
             unit = await get('units', unit_id)
-        except HTTPException:
-            results.append({'unit_id': unit_id, 'ok': False, 'error': 'Unit not found'})
-            continue
-        if unit.get('project_id') != pid:
-            results.append({'unit_id': unit_id, 'ok': False, 'error': 'Unit does not belong to this project'})
-            continue
-        s = unit.get('stage', 0)
-        if s >= data.to_stage:
-            results.append({'unit_id': unit_id, 'ok': False, 'error': 'Unit is already at or past the target stage'})
-            continue
-        gated = next((k for k in range(s, data.to_stage)
-                      if stages[k].get('requires_rto') and unit.get('rto') != 'approved'), None)
-        if gated is not None:
-            results.append({'unit_id': unit_id, 'ok': False,
-                            'error': f"RTO approval required before leaving '{stages[gated]['name']}'"})
-            continue
-        await database().units.update_one(
-            {'id': unit_id},
-            {'$set': {'stage': data.to_stage, 'sample': False, 'updated_at': now()},
-             '$push': {'history': {'stage': s, 'to_stage': data.to_stage, 'note': 'Bulk advance',
-                                   'by': user['name'], 'at': now()}}})
-        results.append({'unit_id': unit_id, 'ok': True})
-    ok_n = sum(1 for r in results if r['ok'])
-    await log(pid, 'stage',
-              f'Bulk advance → {stages[data.to_stage]["name"]} · {ok_n}/{len(results)} units', user)
+            if unit['project_id'] != pid:
+                raise HTTPException(400, 'Unit does not belong to this project')
+            if unit['stage'] != data.to_stage - 1:
+                raise HTTPException(409, 'Only the next valid stage can be completed')
+            await advance_unit(unit_id, data.to_stage - 1, user, 'Bulk completion')
+            results.append({'unit_id': unit_id, 'ok': True})
+        except HTTPException as e:
+            results.append({'unit_id': unit_id, 'ok': False, 'error': e.detail})
     return {'results': results}
 
 PAGINATED = ('units', 'attendance', 'movements')
@@ -442,26 +423,8 @@ async def reset_sample(id: str, user: dict = Depends(require_roles(*OPS_ROLES)))
 
 @router.post('/units/{id}/advance', response_model=Record)
 async def advance(id: str, data: AdvanceIn, user: dict = Depends(require_roles(*OPS_ROLES))):
-    unit = await get('units', id)
-    stages = (await _project_with_stages(unit['project_id']))['workflow_stages']
-    last = len(stages) - 1
-    stage = unit['stage']
-    if stage != data.expected_stage: raise HTTPException(409, 'Unit changed. Refresh and retry.')
-    if stage >= len(stages): raise HTTPException(400, 'Unit already complete')
-    if stages[stage].get('requires_rto'): raise HTTPException(400, 'RTO approval required before advancing')
-    # Phase 2: a critical defect blocks any stage advancement until verified/cancelled.
-    blocker = await database().defects.find_one(
-        {'unit_id': id, 'severity': 'critical', 'status': {'$nin': ['verified', 'cancelled']}},
-        {'_id': 0, 'title': 1})
-    if blocker: raise HTTPException(400, f"Blocked by critical defect: {blocker['title']}")
-    if stage == last:
-        tests = await database().tests.find({'unit_id': id}, {'_id': 0}).sort('created_at', 1).to_list(10000)
-        latest = {t['point_id']: t for t in tests}
-        if not unit['points'] or any(latest.get(p['id'], {}).get('result') != 'pass' for p in unit['points']): raise HTTPException(400, 'A passing test is required for every point')
-    update = await database().units.update_one({'id': id, 'stage': stage}, {'$set': {'stage': stage+1, 'sample': False, 'updated_at': now()}, '$push': {'history': {'stage': stage, 'note': data.note, 'at': now()}}})
-    if not update.modified_count: raise HTTPException(409, 'Unit changed. Refresh and retry.')
-    await log(unit['project_id'], 'stage', f'Blk {unit["block"]} · #{unit["level"]:02}-{unit["number"]} · {stages[stage]["name"]} completed', user)
-    return await get('units', id)
+    from unit_workflow import advance_unit
+    return await advance_unit(id, data.expected_stage, user, data.note)
 
 @router.post('/units/{id}/inspections', response_model=Record)
 async def request_inspection(id: str, data: InspectionIn, user: dict = Depends(require_roles(*OPS_ROLES))):

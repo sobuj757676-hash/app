@@ -92,7 +92,7 @@ async def list_users(user: dict = Depends(require_roles('admin', 'manager'))):
 async def directory(user: dict = Depends(require_roles(*OPS_ROLES))):
     """Minimal active-user directory for assignee pickers (no sensitive fields)."""
     return await database().users.find(
-        {'active': True}, {'_id': 0, 'id': 1, 'name': 1, 'role': 1}).sort('name', 1).to_list(1000)
+        {'active': True}, {'_id': 0, 'id': 1, 'name': 1, 'role': 1, 'worker_id': 1}).sort('name', 1).to_list(1000)
 
 
 @router.patch('/users/{id}')

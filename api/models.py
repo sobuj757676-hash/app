@@ -181,6 +181,8 @@ class TaskScopeIn(BaseModel):
     level: int = Field(ge=1, le=60)
     stage_index: int = Field(ge=0)
     unit_ids: list[str] = Field(min_length=1, max_length=500)
+    stage_id: str | None = None
+    workflow_signature: str | None = None
 
 class TaskIn(BaseModel):
     title: str = Field(min_length=2, max_length=150)
@@ -208,7 +210,9 @@ class TaskPatchIn(BaseModel):
     scope: TaskScopeIn | None = None
     assignees: list[str] | None = Field(default=None, min_length=1, max_length=50)
     defect_id: str | None = None
-    # PATCH replaces the whole list; server validates ids ⊆ scope.unit_ids.
+    team_label: str | None = Field(default=None, max_length=80)
+    target: str | None = Field(default=None, max_length=200)
+    # Deprecated write field: retained to return an actionable validation error.
     completed_unit_ids: list[str] | None = None
 
 class TaskTransitionIn(BaseModel):

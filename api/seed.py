@@ -162,6 +162,9 @@ async def initialize(db):
     await db.defects.create_index([('project_id', 1), ('status', 1)])
     await db.defects.create_index([('project_id', 1), ('assigned_to', 1)])
     await db.tasks.create_index([('project_id', 1), ('assignees', 1), ('status', 1)])
+    await db.tasks.create_index('active_unit_keys', unique=True, sparse=True)
+    await db.tasks.create_index('plan_group_key', unique=True, sparse=True)
+    await db.tasks.create_index([('project_id', 1), ('plan_date', 1)])
     await db.photos.create_index([('project_id', 1), ('entity_type', 1), ('entity_id', 1)])
     await db.notifications.create_index([('user_id', 1), ('read', 1), ('created_at', -1)])
     await _seed_admin(db)
@@ -192,6 +195,9 @@ async def initialize(db):
                       'assignee_names': [aname] if aname else []},
              '$unset': {'assigned_to': '', 'assigned_to_name': ''}})
     if await db.projects.count_documents({}):
+        return
+    import os
+    if os.environ.get('SEED_SAMPLE_DATA', 'true').lower() == 'false':
         return
     now = datetime.now(timezone.utc)
     today = now.astimezone(__import__('zoneinfo').ZoneInfo('Asia/Singapore')).date().isoformat()

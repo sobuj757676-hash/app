@@ -36,7 +36,7 @@ client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
 # routes.py lazily does `from server import db`; satisfy it without a server.py.
-server_module = types.ModuleType("server")
+server_module = sys.modules.get("server") or types.ModuleType("server")
 server_module.db = db
 sys.modules["server"] = server_module
 
@@ -58,6 +58,7 @@ from defects import router as defects_router  # noqa: E402
 from tasks import router as tasks_router  # noqa: E402
 from photos import router as photos_router  # noqa: E402
 from notify import router as notify_router  # noqa: E402
+from planning import router as planning_router  # noqa: E402
 
 # Vercel routes /api/* to api/index.py natively with the full original path,
 # so routes keep their /api prefix here.
@@ -68,6 +69,7 @@ app.include_router(defects_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
 app.include_router(photos_router, prefix="/api")
 app.include_router(notify_router, prefix="/api")
+app.include_router(planning_router, prefix="/api")
 
 
 @app.get("/api/health", include_in_schema=False)
