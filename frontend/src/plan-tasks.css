@@ -97,3 +97,26 @@ tr.selected td{background:var(--blue-soft)}
 @media(max-width:900px){.plan-cards{grid-template-columns:1fr}}
 .confirm-inline{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--text-2)}
 .confirm-inline .table-action{min-height:44px;padding:0 14px}
+
+/* ---- Top-notch Phase 1: locked advanced chips, pending advance, sticky bar ---- */
+.unit-chip.advanced{cursor:default;opacity:.62;border-style:dashed;color:var(--muted-text)}
+.unit-chip.advanced svg{flex-shrink:0}
+.carry-actions{display:inline-flex;gap:6px;align-items:center}
+.pending-count{color:var(--warning);font-weight:600}
+.pending-advance{border:1px solid #ecdcb8;background:var(--warning-soft);border-radius:12px;padding:12px 14px;margin-bottom:14px}
+.pending-head{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;margin-bottom:6px}
+.pending-head strong{font-size:13px;color:var(--warning)}
+.pending-head span{font-size:12px;color:var(--muted-text)}
+.pending-group{padding:8px 0;border-top:1px solid #ecdcb8}
+.pending-group:first-of-type{border-top:0}
+.pending-group-line{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;font-weight:600;color:var(--text)}
+.pending-group-line .table-action{min-height:36px;white-space:nowrap}
+.pending-rows{list-style:none;margin:6px 0 0;padding:0}
+.pending-rows li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;font-size:12px}
+.pending-reason{font-weight:600;text-align:right}
+.pending-reason.ready{color:var(--blue)}
+.pending-reason.rto,.pending-reason.conflict{color:var(--warning)}
+.pending-reason.defect,.pending-reason.tests{color:#c0392b}
+.plan-advance-bar{position:sticky;bottom:10px;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding:10px 14px;border-radius:12px;background:var(--text);color:var(--surface);box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:13px;font-weight:600}
+.advance-bar-btn{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:0 16px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer}
+.advance-bar-btn:disabled{opacity:.6}

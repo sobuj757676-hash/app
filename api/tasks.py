@@ -1,7 +1,7 @@
 """Task assignment endpoints."""
 from fastapi import APIRouter, HTTPException, Depends, Query
-from models import TaskIn, TaskPatchIn, TaskTransitionIn, DefectTaskIn, Record
-from routes import database, get, uid, now, save, log, log_change, is_worker, _project_with_stages
+from models import TaskIn, TaskPatchIn, TaskTransitionIn, DefectTaskIn, Record, TaskAdvanceIn, DismissCarryoverIn
+from routes import database, get, uid, now, save, log, log_change, is_worker, _project_with_stages, _advance_blocker, _advanced_by_task
 from auth import get_current_user, require_roles, OPS_ROLES
 from notify import notify
 
@@ -299,3 +299,160 @@ async def transition_task(id: str, data: TaskTransitionIn,
                          {'page': 'tasks', 'id': id})
     await log(task['project_id'], 'task', f'Task {new} · {task["title"]}', user)
     return (await _attach_defects([await get('tasks', id)]))[0]
+
+
+# ---------- Daily Plan top-notch (spec v2 + v2.1): checked-unit advance ----------
+
+async def _advance_one_checked(pid: str, task: dict, unit_id: str,
+                               si: int, stages: list, user: dict) -> dict:
+    """Classify one checked scope unit against its LIVE stage and advance it
+    by exactly one stage when eligible (spec v2.1 §B). The write is a
+    compare-and-swap on {id, stage}; losing a race re-reads and reclassifies.
+    Stage-ahead units count as already_advanced only when the transition
+    into the current stage was this task's own plan advance (history-proven);
+    anything else is a conflict requiring review."""
+    for _attempt in range(2):
+        unit = await database().units.find_one({'id': unit_id}, {'_id': 0})
+        if not unit or unit.get('project_id') != pid:
+            return {'unit_id': unit_id, 'result': 'not_in_scope'}
+        stage = unit.get('stage', 0)
+        if stage > si:
+            if _advanced_by_task(unit, stage, task['id']):
+                return {'unit_id': unit_id, 'result': 'already_advanced', 'stage': stage}
+            return {'unit_id': unit_id, 'result': 'conflict_ahead', 'stage': stage}
+        if stage < si:
+            return {'unit_id': unit_id, 'result': 'conflict_behind', 'stage': stage}
+        guard = await _advance_blocker(unit, stages)
+        if guard:
+            code, detail = guard
+            out = {'unit_id': unit_id, 'result': code}
+            if detail:
+                out['detail'] = detail
+            return out
+        upd = await database().units.update_one(
+            {'id': unit_id, 'stage': si},
+            {'$set': {'stage': si + 1, 'sample': False, 'updated_at': now()},
+             '$push': {'history': {
+                 'stage': si, 'to_stage': si + 1, 'note': 'Plan advance',
+                 'by': user['name'], 'by_id': user['id'],
+                 'task_id': task['id'], 'source': 'plan_advance',
+                 'at': now()}}})
+        if upd.modified_count:
+            return {'unit_id': unit_id, 'result': 'advanced',
+                    'from_stage': si, 'to_stage': si + 1}
+        # CAS lost a race: loop re-reads the unit and reclassifies it.
+    unit = await database().units.find_one({'id': unit_id}, {'_id': 0})
+    stage = (unit or {}).get('stage', 0)
+    if unit and stage > si and _advanced_by_task(unit, stage, task['id']):
+        return {'unit_id': unit_id, 'result': 'already_advanced', 'stage': stage}
+    if unit and stage != si:
+        return {'unit_id': unit_id,
+                'result': 'conflict_ahead' if stage > si else 'conflict_behind',
+                'stage': stage}
+    return {'unit_id': unit_id, 'result': 'conflict_behind', 'stage': stage,
+            'detail': 'Unit changed during advance; review and retry'}
+
+
+async def _scope_all_advanced(task: dict, scope_ids: list[str],
+                              completed: set, si: int) -> bool:
+    """True when every scope unit's live stage is past the scope stage and
+    no checked unit is unresolved (still at/behind the scope stage, or ahead
+    via another workflow). Drives the client's offer to mark the task done."""
+    if not scope_ids:
+        return False
+    units = {u['id']: u for u in await database().units.find(
+        {'id': {'$in': scope_ids}}, {'_id': 0}).to_list(len(scope_ids))}
+    for unit_id in scope_ids:
+        unit = units.get(unit_id)
+        if not unit:
+            return False
+        stage = unit.get('stage', 0)
+        if stage <= si:
+            return False
+        if unit_id in completed and not _advanced_by_task(unit, stage, task['id']):
+            return False
+    return True
+
+
+@router.post('/projects/{pid}/tasks/{tid}/advance')
+async def advance_checked_units(pid: str, tid: str, data: TaskAdvanceIn,
+                                user: dict = Depends(require_roles(*OPS_ROLES))):
+    """Advance a planned task's checked units by one stage (spec v2 §2 as
+    corrected by v2.1 §B). Per-unit partial success; unchecked units are
+    never advanced; the call is idempotent (a repeat performs zero writes).
+    Task status is never changed here — closing the task stays the
+    supervisor's explicit transition. Works on done tasks too: a done
+    status must not strand checked-but-unadvanced units (v2.1 addendum)."""
+    task = await get('tasks', tid)
+    if task.get('project_id') != pid:
+        raise HTTPException(404, 'Task not found')
+    scope = task.get('scope')
+    if task.get('kind') != 'planned' or not scope:
+        raise HTTPException(400, 'Only planned tasks with a scope can advance checked units')
+    if task.get('status') == 'cancelled':
+        raise HTTPException(400, 'A cancelled task cannot advance units')
+    stages = (await _project_with_stages(pid))['workflow_stages']
+    si = scope.get('stage_index', 0)
+    if si >= len(stages):
+        raise HTTPException(400, 'Scope stage is out of range')
+    scope_ids = list(dict.fromkeys(scope.get('unit_ids') or []))
+    scope_set = set(scope_ids)
+    completed = set(task.get('completed_unit_ids') or [])
+    if data.unit_ids is not None:
+        requested = list(dict.fromkeys(data.unit_ids))
+        candidates = [u for u in requested if u in scope_set and u in completed]
+        extras = [u for u in requested if u not in scope_set or u not in completed]
+    else:
+        candidates = [u for u in scope_ids if u in completed]
+        extras = []
+    results = [await _advance_one_checked(pid, task, u, si, stages, user)
+               for u in candidates]
+    for u in extras:
+        results.append({'unit_id': u,
+                        'result': 'not_in_scope' if u not in scope_set else 'not_checked'})
+    counts = {}
+    for r in results:
+        counts[r['result']] = counts.get(r['result'], 0) + 1
+    all_advanced = await _scope_all_advanced(task, scope_ids, completed, si)
+    if counts.get('advanced') or counts.get('conflict_ahead') or counts.get('conflict_behind'):
+        await log(pid, 'stage',
+                  f"Plan advance · {task['title']} · {counts.get('advanced', 0)} advanced"
+                  f" · {counts.get('already_advanced', 0)} already"
+                  f" · {counts.get('conflict_ahead', 0) + counts.get('conflict_behind', 0)} conflict"
+                  f" · {sum(counts.get(k, 0) for k in ('blocked_rto', 'blocked_defect', 'blocked_tests'))} blocked",
+                  user)
+    return {'task_id': tid, 'results': results,
+            'advanced': counts.get('advanced', 0),
+            'already_advanced': counts.get('already_advanced', 0),
+            'conflict_ahead': counts.get('conflict_ahead', 0),
+            'conflict_behind': counts.get('conflict_behind', 0),
+            'blocked': sum(counts.get(k, 0)
+                           for k in ('blocked_rto', 'blocked_defect', 'blocked_tests')),
+            'all_advanced': all_advanced}
+
+
+@router.post('/tasks/{id}/dismiss-carryover', response_model=Record)
+async def dismiss_carryover(id: str, data: DismissCarryoverIn,
+                            user: dict = Depends(require_roles(*OPS_ROLES))):
+    """Persistently dismiss a planned task's carry-over offer (spec v2 §3).
+    Used by Skip (no successor) and by Add to Today (successor recorded, so
+    the lineage closes exactly once and the same units are never offered
+    twice). Idempotent: dismissing an already-dismissed task is a no-op.
+    The task's units are never touched — dismissal hides the offer, not
+    the work; units stay visible in the Unit Tracker."""
+    task = await get('tasks', id)
+    if task.get('carryover_dismissed_at'):
+        return task
+    patch = {'carryover_dismissed_at': now(),
+             'carryover_dismissed_by': {'id': user['id'], 'name': user['name']},
+             'updated_at': now()}
+    if data.superseded_by_task_id:
+        successor = await get('tasks', data.superseded_by_task_id)
+        if successor.get('project_id') != task.get('project_id'):
+            raise HTTPException(400, 'Successor task belongs to another project')
+        patch['superseded_by_task_id'] = data.superseded_by_task_id
+    await database().tasks.update_one({'id': id}, {'$set': patch})
+    note = ' · re-planned' if data.superseded_by_task_id else ' · skipped'
+    await log(task['project_id'], 'task',
+              f"Carry-over dismissed · {task['title']}{note}", user)
+    return await get('tasks', id)

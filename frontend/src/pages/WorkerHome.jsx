@@ -4,7 +4,7 @@ import {useAuth} from '../lib/auth';
 import {useWorkspace} from '../lib/store';
 import {useLanguage} from '../lib/i18n';
 import {api,today,percent,errorText,fmtDate,stagesOf} from '../lib/api';
-import {isAssigned,PRIW,toggleCompletedIds,completedUnitIds} from '../lib/planTasks';
+import {isAssigned,PRIW,toggleCompletedIds,completedUnitIds,advancedUnitIds} from '../lib/planTasks';
 import {UnitCheckboxes,StaleFlag,PlanProgress} from '../components/PlanUnitChips';
 import {planScopeText} from './PlanDay';
 import {PageTitle,Metric,ProgressBar,StatusBadge,Empty,Action} from '../components/Common';
@@ -35,7 +35,7 @@ function WorkerTaskRow({i,t,user,data,moveBusy,moveTask,onOpenDefect,toggleUnit,
    <div><strong>{i.title}</strong><small className="scope-line" data-testid={`worker-scope-${i.id}`}>{planScopeText(i,data,t)}</small><PlanProgress task={i} testId={`worker-progress-${i.id}`}/>{i.due_date&&<DueLine t={t} date={i.due_date} overdue={isOverdue(i)}/>}</div>
    {i.defect&&<DefectChip defect={i.defect} onOpen={()=>onOpenDefect(i.defect.id)}/>}
    <StaleFlag task={i} data={data} testPrefix={`worker-stale-${i.id}`}/>
-   <UnitCheckboxes task={i} data={data} checked={completedUnitIds(i)} busy={planBusy} onToggle={id=>toggleUnit(i,id)} testPrefix={`worker-unit-${i.id}`}/>
+   <UnitCheckboxes task={i} data={data} checked={completedUnitIds(i)} busy={planBusy} onToggle={id=>toggleUnit(i,id)} testPrefix={`worker-unit-${i.id}`} advancedIds={advancedUnitIds(i,data)}/>
    <div className="worker-task-actions">{(TASK_NEXT[i.status]||[]).filter(s=>mayMove(user,i,s)).map(s=><button key={s} type="button" data-testid={`worker-task-${s}-${i.id}`} className="attend-submit small" disabled={moveBusy.includes(i.id)} onClick={()=>moveTask(i,s)}>{t(s==='todo'?'todo':s)}</button>)}</div>
   </div>;
  }

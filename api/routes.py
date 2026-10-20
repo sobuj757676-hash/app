@@ -73,6 +73,60 @@ def _rto_index(stages: list) -> int:
             return i
     return -1
 
+async def _advance_blocker(unit: dict, stages: list):
+    """Shared stage-exit guards for single advance and plan advance.
+
+    Returns (code, detail) or None. Codes: 'blocked_rto' (current stage
+    carries the RTO gate — units leave it only via the inspection decision),
+    'blocked_defect' (open critical defect; detail = its title),
+    'blocked_tests' (final stage without a latest passing test per point).
+    Assumes unit['stage'] < len(stages).
+    """
+    stage = unit.get('stage', 0)
+    if stages[stage].get('requires_rto'):
+        return ('blocked_rto', None)
+    blocker = await database().defects.find_one(
+        {'unit_id': unit['id'], 'severity': 'critical',
+         'status': {'$nin': ['verified', 'cancelled']}},
+        {'_id': 0, 'title': 1})
+    if blocker:
+        return ('blocked_defect', blocker['title'])
+    if stage == len(stages) - 1:
+        tests = await database().tests.find(
+            {'unit_id': unit['id']}, {'_id': 0}).sort('created_at', 1).to_list(10000)
+        latest = {t['point_id']: t for t in tests}
+        if not unit['points'] or any(
+                latest.get(p['id'], {}).get('result') != 'pass' for p in unit['points']):
+            return ('blocked_tests', None)
+    return None
+
+def _event_resulting_stage(event: dict) -> int:
+    """The stage a unit history event left the unit at. Shapes differ by
+    writer: bulk advance stores to_stage; decision events store result
+    (approved moves +1, rework stays); single advance stores only stage."""
+    if event.get('to_stage') is not None:
+        return event['to_stage']
+    if 'result' in event:
+        return event.get('stage', 0) + 1 if event['result'] == 'approved' else event.get('stage', 0)
+    return event.get('stage', 0) + 1
+
+def _last_transition_into(unit: dict, stage: int):
+    """The last stage-CHANGING history event whose resulting stage equals
+    `stage` (i.e. the event that put the unit where it is), or None."""
+    found = None
+    for event in unit.get('history') or []:
+        resulting = _event_resulting_stage(event)
+        if resulting == stage and resulting != event.get('stage', 0):
+            found = event
+    return found
+
+def _advanced_by_task(unit: dict, stage: int, task_id: str) -> bool:
+    """True when the transition into the unit's current stage was performed
+    by the given task's checked-unit advance (spec v2.1 §B)."""
+    event = _last_transition_into(unit, stage)
+    return bool(event) and event.get('source') == 'plan_advance' \
+        and event.get('task_id') == task_id
+
 @router.get('/')
 async def health(): return {'status': 'ok', 'app': 'VoltCraft'}
 
@@ -444,20 +498,19 @@ async def reset_sample(id: str, user: dict = Depends(require_roles(*OPS_ROLES)))
 async def advance(id: str, data: AdvanceIn, user: dict = Depends(require_roles(*OPS_ROLES))):
     unit = await get('units', id)
     stages = (await _project_with_stages(unit['project_id']))['workflow_stages']
-    last = len(stages) - 1
     stage = unit['stage']
     if stage != data.expected_stage: raise HTTPException(409, 'Unit changed. Refresh and retry.')
     if stage >= len(stages): raise HTTPException(400, 'Unit already complete')
-    if stages[stage].get('requires_rto'): raise HTTPException(400, 'RTO approval required before advancing')
-    # Phase 2: a critical defect blocks any stage advancement until verified/cancelled.
-    blocker = await database().defects.find_one(
-        {'unit_id': id, 'severity': 'critical', 'status': {'$nin': ['verified', 'cancelled']}},
-        {'_id': 0, 'title': 1})
-    if blocker: raise HTTPException(400, f"Blocked by critical defect: {blocker['title']}")
-    if stage == last:
-        tests = await database().tests.find({'unit_id': id}, {'_id': 0}).sort('created_at', 1).to_list(10000)
-        latest = {t['point_id']: t for t in tests}
-        if not unit['points'] or any(latest.get(p['id'], {}).get('result') != 'pass' for p in unit['points']): raise HTTPException(400, 'A passing test is required for every point')
+    # Stage-exit guards are shared with the plan advance endpoint (spec v2.1):
+    # RTO gate, open critical defect, final-stage test requirement.
+    guard = await _advance_blocker(unit, stages)
+    if guard:
+        code, detail = guard
+        if code == 'blocked_rto':
+            raise HTTPException(400, 'RTO approval required before advancing')
+        if code == 'blocked_defect':
+            raise HTTPException(400, f'Blocked by critical defect: {detail}')
+        raise HTTPException(400, 'A passing test is required for every point')
     update = await database().units.update_one({'id': id, 'stage': stage}, {'$set': {'stage': stage+1, 'sample': False, 'updated_at': now()}, '$push': {'history': {'stage': stage, 'note': data.note, 'at': now()}}})
     if not update.modified_count: raise HTTPException(409, 'Unit changed. Refresh and retry.')
     await log(unit['project_id'], 'stage', f'Blk {unit["block"]} · #{unit["level"]:02}-{unit["number"]} · {stages[stage]["name"]} completed', user)

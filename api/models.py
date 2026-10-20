@@ -215,6 +215,17 @@ class TaskTransitionIn(BaseModel):
     status: Literal['todo', 'in_progress', 'done', 'cancelled']
     note: str = Field(default='', max_length=1000)
 
+class TaskAdvanceIn(BaseModel):
+    # Optional explicit candidate list for the checked-unit advance endpoint.
+    # When omitted, the task's completed_unit_ids are the candidates. Ids are
+    # always intersected with scope.unit_ids ∩ completed_unit_ids server-side.
+    unit_ids: list[str] | None = Field(default=None, max_length=500)
+
+class DismissCarryoverIn(BaseModel):
+    # Set when the dismissal happens because the leftover was re-planned
+    # into a successor task (Add to Today); plain Skip omits it.
+    superseded_by_task_id: str | None = Field(default=None, max_length=64)
+
 class DefectTaskIn(BaseModel):
     title: str = Field(min_length=2, max_length=150)
     description: str = Field(default='', max_length=2000)

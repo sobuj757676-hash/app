@@ -1,4 +1,4 @@
-import {AlertTriangle} from 'lucide-react';
+import {AlertTriangle,Lock} from 'lucide-react';
 import {useLanguage} from '../lib/i18n';
 import {label} from '../lib/api';
 import {staleUnits,plannedUnitIds,completedUnitIds,resolveStage} from '../lib/planTasks';
@@ -6,12 +6,19 @@ import {staleUnits,plannedUnitIds,completedUnitIds,resolveStage} from '../lib/pl
 // Unit chips as 44px checkboxes. `checked` = current completed_unit_ids list;
 // `onToggle(id)` patches the full replacement list on the parent.
 // `busy` = task id currently syncing (disables while a PATCH is in flight).
-export function UnitCheckboxes({task,data,checked,onToggle,busy,testPrefix}){
+// `advancedIds` = units this task already advanced (spec v2.1): rendered
+// checked + locked — visible context, never interactive again.
+export function UnitCheckboxes({task,data,checked,onToggle,busy,testPrefix,advancedIds}){
+ const {t}=useLanguage();
  const ids=plannedUnitIds(task);
+ const adv=new Set(advancedIds||[]);
  return <div className="unit-chips" role="group" aria-label={String(task.id)}>
   {ids.map(id=>{
    const u=data.units.find(x=>x.id===id);
    const isC=checked.includes(id);
+   if(adv.has(id))return <span key={id} className="unit-chip checked advanced" data-testid={`${testPrefix}-chip-${id}`} data-advanced="1" title={t('advancedTag')}>
+    <Lock size={12}/><span>{u?label(u):id.slice(0,6)}</span>
+   </span>;
    return <label key={id} className={`unit-chip${isC?' checked':''}`} data-testid={`${testPrefix}-chip-${id}`}>
     <input type="checkbox" checked={isC} disabled={busy===task.id} onChange={()=>onToggle(id)} aria-label={u?label(u):id}/>
     <span>{u?label(u):id.slice(0,6)}</span>
