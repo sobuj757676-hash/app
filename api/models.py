@@ -184,7 +184,9 @@ class TaskScopeIn(BaseModel):
 
 class TaskIn(BaseModel):
     title: str = Field(min_length=2, max_length=150)
-    description: str = Field(default='', max_length=2000)
+    # The web client sends null for an empty description; accept and
+    # normalize it (creation logic already treats None as '').
+    description: str | None = Field(default='', max_length=2000)
     unit_id: str | None = None
     defect_id: str | None = None
     assignees: list[str] = Field(min_length=1, max_length=50)
@@ -228,7 +230,8 @@ class DismissCarryoverIn(BaseModel):
 
 class DefectTaskIn(BaseModel):
     title: str = Field(min_length=2, max_length=150)
-    description: str = Field(default='', max_length=2000)
+    # Same null-description contract as TaskIn (see above).
+    description: str | None = Field(default='', max_length=2000)
     assignees: list[str] | None = Field(default=None, min_length=1, max_length=50)
     priority: Literal['low', 'medium', 'high', 'urgent'] = 'medium'
     due_date: date | None = None
