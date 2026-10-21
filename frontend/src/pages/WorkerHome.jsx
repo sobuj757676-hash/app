@@ -35,8 +35,8 @@ function WorkerTaskRow({i,t,user,data,moveBusy,moveTask,onOpenDefect,toggleUnit,
    <div><strong>{i.title}</strong><small className="scope-line" data-testid={`worker-scope-${i.id}`}>{planScopeText(i,data,t)}</small><PlanProgress task={i} testId={`worker-progress-${i.id}`}/>{i.due_date&&<DueLine t={t} date={i.due_date} overdue={isOverdue(i)}/>}</div>
    {i.defect&&<DefectChip defect={i.defect} onOpen={()=>onOpenDefect(i.defect.id)}/>}
    <StaleFlag task={i} data={data} testPrefix={`worker-stale-${i.id}`}/>
-   <UnitCheckboxes task={i} data={data} checked={completedUnitIds(i)} busy={planBusy} onToggle={id=>toggleUnit(i,id)} testPrefix={`worker-unit-${i.id}`} advancedIds={advancedUnitIds(i,data)}/>
-   <div className="worker-task-actions">{(TASK_NEXT[i.status]||[]).filter(s=>mayMove(user,i,s)).map(s=><button key={s} type="button" data-testid={`worker-task-${s}-${i.id}`} className="attend-submit small" disabled={moveBusy.includes(i.id)} onClick={()=>moveTask(i,s)}>{t(s==='todo'?'todo':s)}</button>)}</div>
+   <UnitCheckboxes task={i} data={data} checked={completedUnitIds(i)} busy={planBusy} onToggle={id=>toggleUnit(i,id)} testPrefix={`worker-unit-${i.id}`} advancedIds={advancedUnitIds(i,data)} large/>
+   <div className="worker-task-actions">{(TASK_NEXT[i.status]||[]).filter(s=>mayMove(user,i,s)).filter(s=>!(i.status==='todo'&&s==='in_progress')).map(s=><button key={s} type="button" data-testid={`worker-task-${s}-${i.id}`} className="attend-submit small" disabled={moveBusy.includes(i.id)} onClick={()=>moveTask(i,s)}>{t(s==='todo'?'todo':s)}</button>)}</div>
   </div>;
  }
  return <div className="worker-task" data-testid={`worker-task-${i.id}`}>
@@ -72,10 +72,22 @@ export default function WorkerHome(){
   catch{/* toasted by mutate */}
  };
  // Worker checks off her own completed units on a planned task (full-list PATCH).
+ // Planned tasks have no Start button: the first check on a todo task starts
+ // it. A check shows a 4-second Undo toast restoring the previous list.
  const toggleUnit=async(task,id)=>{
   if(planBusy)return;setPlanBusy(task.id);
-  try{await mutate('patch',`/tasks/${task.id}`,{completed_unit_ids:toggleCompletedIds(task,id)});}
-  catch{/* toasted by mutate */}
+  const prev=completedUnitIds(task);
+  const next=toggleCompletedIds(task,id);
+  const checking=!prev.includes(id)&&next.includes(id);
+  try{
+   await mutate('patch',`/tasks/${task.id}`,{completed_unit_ids:next});
+   if(checking&&task.status==='todo'&&prev.length===0){
+    try{await mutate('post',`/tasks/${task.id}/transition`,{status:'in_progress'});}catch{/* toasted by mutate */}
+   }
+   if(checking){
+    toast.success(t('unitChecked'),{duration:4000,action:{label:t('undo'),onClick:async()=>{try{await mutate('patch',`/tasks/${task.id}`,{completed_unit_ids:prev});}catch{/* toasted by mutate */}}}});
+   }
+  }catch{/* toasted by mutate */}
   finally{setPlanBusy(null);}
  };
  const myTasks=(data.tasks||[]).filter(x=>isAssigned(x,user?.id)&&!['done','cancelled'].includes(x.status)).map(x=>({...x,wkind:'task'}));

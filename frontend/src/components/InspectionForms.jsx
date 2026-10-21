@@ -41,11 +41,12 @@ export const InspectionRequest=({unit,onClose})=>{
 export const InspectionDecision=({inspection,onClose})=>{
  const {t}=useLanguage();const {mutate}=useWorkspace();const {user}=useAuth();const [photoTick,setPhotoTick]=useState(0);
  return <FormModal open onClose={onClose} title={`${t('reviewInspection')} · ${inspection.unit_label}`}
-  initial={{inspector:inspection.inspector,result:'approved',note:''}}
+  initial={{inspector:inspection.inspector,result:inspection.proposed_result||'approved',note:''}}
   fields={[{name:'inspector',label:t('inspector')},{name:'result',label:t('result'),options:[{value:'approved',label:t('approve')},{value:'rework',label:t('requestRework')}]},{name:'note',label:t('inspectionNote'),type:'textarea',wide:true}]}
   onSubmit={v=>mutate('post',`/inspections/${inspection.id}/decision`,v)}>
-  {(inspection.checklist?.length>0||inspection.requested_by)&&<div className="inspection-context" data-testid="inspection-context">
+  {(inspection.checklist?.length>0||inspection.requested_by||inspection.proposed_result)&&<div className="inspection-context" data-testid="inspection-context">
    {inspection.requested_by&&<p><strong>{t('requestedBy')}:</strong> {inspection.requested_by.name}</p>}
+   {inspection.proposed_result&&<p data-testid="inspection-proposed"><strong>{t('proposedLine')}:</strong> {t(inspection.proposed_result)} — {inspection.proposed_by?.name||''}</p>}
    {inspection.checklist?.length>0&&<><h4>{t('rtoChecklist')}</h4><ul>{inspection.checklist.map((c,i)=><li key={i} data-testid={`inspection-check-${i}`}><span className="check-done">✓</span>{c.item}<small>{c.checked_by?.name}</small></li>)}</ul></>}
   </div>}
   <div className="inspection-photos" data-testid="inspection-photos"><h4><Camera size={15}/>{t('photos')}</h4>

@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
-import {useSearchParams} from 'react-router-dom';
+import {useSearchParams,useNavigate} from 'react-router-dom';
 import {Grid2X2,List,Search,ArrowUpRight,Check,Clock3,AlertTriangle,Building2,ListChecks,X} from 'lucide-react';
 import {useLanguage} from '../lib/i18n';
 import {useWorkspace} from '../lib/store';
@@ -16,7 +16,7 @@ export default function UnitTracker(){
  const {t}=useLanguage();
  const {data,selectedUnit,setSelectedUnit,mutate}=useWorkspace();
  const stages=stagesOf(data),sc=stages.length||1;
- const {user}=useAuth();const ro=!canWrite(user);
+ const {user}=useAuth();const ro=!canWrite(user);const navigate=useNavigate();
  const [params,setParams]=useSearchParams();
  const [block,setBlock]=useState(params.get('block')||(params.has('q')?'all':data.blocks[0]?.id||''));
  const [q,setQ]=useState(params.get('q')||'');
@@ -97,6 +97,7 @@ export default function UnitTracker(){
    <button type="button" data-testid="lens-ready" className={lens==='ready'?'active':''} onClick={()=>setLens('ready')}>{t('lensReady')}</button>
    <button type="button" data-testid="lens-rto" className={lens==='rto'?'active':''} onClick={()=>setLens('rto')}>{t('lensRtoQueue')} ({rtoCounts.total})</button>
    {lens==='rto'&&<span className="lens-split" data-testid="lens-rto-split">{rtoCounts.none} {t('rtoAwaiting')} · {rtoCounts.pending} {t('rtoDeciding')} · {rtoCounts.rework} {t('rework')}</span>}
+   {lens==='rto'&&!ro&&<button type="button" className="lens-walk" data-testid="lens-start-walk" onClick={()=>navigate('/rto-walk')}>{t('startWalk')}</button>}
   </div>
   {!filtered.length?<Empty text={t('noUnits')}/>:mode==='matrix'&&!allBlocks?
    <div className="matrix-scroll" data-testid="floor-matrix"><div className={`floor-matrix${selecting?' selecting':''}`} style={{gridTemplateColumns:`64px repeat(${stacks.length}, minmax(50px, 1fr))`}}>

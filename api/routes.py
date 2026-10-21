@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import Response
-from models import Record, Workspace, ProjectIn, BlockIn, BlockRenameIn, UnitIn, AdvanceIn, InspectionIn, DecisionIn, PointIn, TestIn, RtoChecklistIn, PointTemplatesIn, WorkflowStagesIn, BulkAdvanceIn
+from models import Record, Workspace, ProjectIn, BlockIn, BlockRenameIn, UnitIn, AdvanceIn, InspectionIn, DecisionIn, PointIn, TestIn, RtoChecklistIn, PointTemplatesIn, WorkflowStagesIn, BulkAdvanceIn, RtoWalkRequestsIn, RtoWalkProposalsIn, RtoWalkDecisionsIn
 from seed import points_for, DEFAULT_RTO_CHECKLIST, DEFAULT_POINT_TEMPLATES, points_for_template, ROOM_TYPES, POINT_KINDS, DEFAULT_WORKFLOW_STAGES
 from auth import get_current_user, require_roles, OPS_ROLES, DECIDE_ROLES, MONEY_ROLES
 
@@ -516,55 +516,170 @@ async def advance(id: str, data: AdvanceIn, user: dict = Depends(require_roles(*
     await log(unit['project_id'], 'stage', f'Blk {unit["block"]} · #{unit["level"]:02}-{unit["number"]} · {stages[stage]["name"]} completed', user)
     return await get('units', id)
 
+def _validate_rto_checklist(project: dict, checklist):
+    """Shared readiness-checklist validation (single request + walk batch).
+
+    Raises the same 400s the single-unit endpoint has always raised.
+    """
+    template = project.get('rto_checklist_template') or DEFAULT_RTO_CHECKLIST
+    if not checklist:
+        raise HTTPException(400, 'RTO readiness checklist is required — confirm every item before requesting')
+    submitted = [c.item for c in checklist]
+    if submitted != template:
+        raise HTTPException(400, 'Readiness checklist does not match the project template')
+    if not all(c.checked for c in checklist):
+        raise HTTPException(400, 'All readiness checklist items must be confirmed')
+
+async def _create_inspection(unit: dict, inspector: str, date_s: str, note: str, checklist, user: dict, rto_stage: int):
+    """CAS the unit to rto=pending and create its inspection record.
+
+    The one request write path (single endpoint + RTO walk batch). Returns
+    the created doc, or None when the unit is not requestable (not at the
+    gate stage, or an inspection is already pending).
+    """
+    result = await database().units.update_one({'id': unit['id'], 'stage': rto_stage, 'rto': {'$in': ['none', 'rework']}}, {'$set': {'rto': 'pending', 'sample': False, 'updated_at': now()}})
+    if not result.modified_count: return None
+    enriched = [{'item': c.item, 'checked': True,
+                 'checked_by': {'id': user['id'], 'name': user['name']},
+                 'checked_at': now()} for c in checklist]
+    doc = {'id': uid(), 'project_id': unit['project_id'], 'unit_id': unit['id'], 'block': unit['block'], 'unit_label': f'#{unit["level"]:02}-{unit["number"]}', 'inspector': inspector, 'date': date_s, 'note': note, 'checklist': enriched, 'requested_by': {'id': user['id'], 'name': user['name']}, 'decided_by': None, 'decided_at': None, 'status': 'pending', 'created_at': now()}
+    await log(unit['project_id'], 'inspection', f'Blk {unit["block"]} · {doc["unit_label"]} · RTO inspection requested', user)
+    return await save('inspections', doc)
+
 @router.post('/units/{id}/inspections', response_model=Record)
 async def request_inspection(id: str, data: InspectionIn, user: dict = Depends(require_roles(*OPS_ROLES))):
     unit = await get('units', id)
     # Validate the readiness checklist BEFORE touching the unit, so a rejected
     # request never leaves the unit in a half-updated state.
     project = await get('projects', unit['project_id'])
-    template = project.get('rto_checklist_template') or DEFAULT_RTO_CHECKLIST
-    if not data.checklist:
-        raise HTTPException(400, 'RTO readiness checklist is required — confirm every item before requesting')
-    submitted = [c.item for c in data.checklist]
-    if submitted != template:
-        raise HTTPException(400, 'Readiness checklist does not match the project template')
-    if not all(c.checked for c in data.checklist):
-        raise HTTPException(400, 'All readiness checklist items must be confirmed')
+    _validate_rto_checklist(project, data.checklist)
     # The RTO gate lives on whichever stage carries requires_rto (index 5 by default).
     stages = (await _project_with_stages(unit['project_id']))['workflow_stages']
     rto_stage = _rto_index(stages)
     if rto_stage < 0:
         raise HTTPException(400, 'This project has no RTO approval stage')
-    result = await database().units.update_one({'id': id, 'stage': rto_stage, 'rto': {'$in': ['none', 'rework']}}, {'$set': {'rto': 'pending', 'sample': False, 'updated_at': now()}})
-    if not result.modified_count: raise HTTPException(400, 'Complete installation first; only one pending inspection is allowed')
-    checklist = [{'item': c.item, 'checked': True,
-                  'checked_by': {'id': user['id'], 'name': user['name']},
-                  'checked_at': now()} for c in data.checklist]
-    doc = {'id': uid(), 'project_id': unit['project_id'], 'unit_id': id, 'block': unit['block'], 'unit_label': f'#{unit["level"]:02}-{unit["number"]}', **data.model_dump(mode='json', exclude={'checklist'}), 'checklist': checklist, 'requested_by': {'id': user['id'], 'name': user['name']}, 'decided_by': None, 'decided_at': None, 'status': 'pending', 'created_at': now()}
-    await log(unit['project_id'], 'inspection', f'Blk {unit["block"]} · {doc["unit_label"]} · RTO inspection requested', user)
-    return await save('inspections', doc)
+    doc = await _create_inspection(unit, data.inspector, data.date.isoformat(), data.note, data.checklist, user, rto_stage)
+    if doc is None:
+        raise HTTPException(400, 'Complete installation first; only one pending inspection is allowed')
+    return doc
 
-@router.post('/inspections/{id}/decision', response_model=Record)
-async def decide(id: str, data: DecisionIn, user: dict = Depends(require_roles(*DECIDE_ROLES))):
-    inspection = await get('inspections', id)
-    if inspection['status'] != 'pending': raise HTTPException(400, 'Inspection is already closed')
+async def _apply_rto_decision(inspection: dict, result: str, inspector: str, note: str, user: dict) -> bool:
+    """The one RTO decision write path (single endpoint + walk batch).
+
+    CAS on the unit at the gate with rto=pending, then inspection closure,
+    unit history entry, activity log and requester notification — identical
+    semantics wherever the decision comes from. Proposal fields on the
+    inspection record are deliberately left intact (audit trail, v2.1 §D).
+    Returns False when the unit CAS loses (not awaiting this inspection).
+    """
     unit = await get('units', inspection['unit_id'])
     stages = (await _project_with_stages(unit['project_id']))['workflow_stages']
     rto_stage = _rto_index(stages)
     if rto_stage < 0:
         raise HTTPException(400, 'This project has no RTO approval stage')
-    changed = await database().units.update_one({'id': unit['id'], 'stage': rto_stage, 'rto': 'pending'}, {'$set': {'stage': rto_stage + 1 if data.result == 'approved' else rto_stage, 'rto': data.result, 'sample': False, 'updated_at': now()}, '$push': {'history': {'stage': rto_stage, 'note': data.note, 'inspector': data.inspector, 'result': data.result, 'at': now()}}})
-    if not changed.modified_count: raise HTTPException(409, 'Unit is not awaiting this inspection')
-    await database().inspections.update_one({'id': id}, {'$set': {'status': data.result, 'inspector': data.inspector, 'note': data.note, 'decided_by': {'id': user['id'], 'name': user['name']}, 'decided_at': now()}})
-    await log(unit['project_id'], 'inspection', f'Blk {unit["block"]} · {inspection["unit_label"]} · RTO {data.result}', user)
+    changed = await database().units.update_one({'id': unit['id'], 'stage': rto_stage, 'rto': 'pending'}, {'$set': {'stage': rto_stage + 1 if result == 'approved' else rto_stage, 'rto': result, 'sample': False, 'updated_at': now()}, '$push': {'history': {'stage': rto_stage, 'note': note, 'inspector': inspector, 'result': result, 'at': now()}}})
+    if not changed.modified_count: return False
+    await database().inspections.update_one({'id': inspection['id']}, {'$set': {'status': result, 'inspector': inspector, 'note': note, 'decided_by': {'id': user['id'], 'name': user['name']}, 'decided_at': now()}})
+    await log(unit['project_id'], 'inspection', f'Blk {unit["block"]} · {inspection["unit_label"]} · RTO {result}', user)
     requester_id = (inspection.get('requested_by') or {}).get('id')
     if requester_id and requester_id != user['id']:
         from notify import notify
         await notify(requester_id, 'rto_decided',
-                     f'RTO {data.result}: Blk {unit["block"]} · {inspection["unit_label"]}',
-                     f'Decided by {user["name"]}' + (f' · {data.note[:200]}' if data.note else ''),
-                     {'page': 'inspections', 'id': id})
+                     f'RTO {result}: Blk {unit["block"]} · {inspection["unit_label"]}',
+                     f'Decided by {user["name"]}' + (f' · {note[:200]}' if note else ''),
+                     {'page': 'inspections', 'id': inspection['id']})
+    return True
+
+@router.post('/inspections/{id}/decision', response_model=Record)
+async def decide(id: str, data: DecisionIn, user: dict = Depends(require_roles(*DECIDE_ROLES))):
+    inspection = await get('inspections', id)
+    if inspection['status'] != 'pending': raise HTTPException(400, 'Inspection is already closed')
+    if not await _apply_rto_decision(inspection, data.result, data.inspector, data.note, user):
+        raise HTTPException(409, 'Unit is not awaiting this inspection')
     return await get('inspections', id)
+
+# ---- RTO Walk (spec v2 §4 + v2.1 §D): batch front-end over the same
+# machinery — no parallel system, no new collections. Proposals are three
+# optional fields on the existing inspection record.
+
+@router.post('/projects/{pid}/rto-walk/requests')
+async def rto_walk_requests(pid: str, data: RtoWalkRequestsIn, user: dict = Depends(require_roles(*OPS_ROLES))):
+    """Phase 1 of a walk commit: create inspections for marked units that
+    are at the gate and not yet requested. Per-unit results; one unit's
+    failure never blocks the rest. Units already pending skip (reported
+    as already_pending with their inspection id)."""
+    project = await _project_with_stages(pid)
+    _validate_rto_checklist(project, data.checklist)
+    rto_stage = _rto_index(project['workflow_stages'])
+    if rto_stage < 0:
+        raise HTTPException(400, 'This project has no RTO approval stage')
+    results = []
+    for unit_id in data.unit_ids:
+        unit = await database().units.find_one({'id': unit_id, 'project_id': pid}, {'_id': 0})
+        if not unit:
+            results.append({'unit_id': unit_id, 'status': 'not_found'})
+            continue
+        if unit['stage'] != rto_stage:
+            results.append({'unit_id': unit_id, 'status': 'not_at_gate'})
+            continue
+        if unit.get('rto') == 'pending':
+            existing = await database().inspections.find_one({'unit_id': unit_id, 'status': 'pending'}, {'_id': 0, 'id': 1})
+            results.append({'unit_id': unit_id, 'status': 'already_pending', 'inspection_id': existing['id'] if existing else None})
+            continue
+        doc = await _create_inspection(unit, data.inspector, data.date.isoformat(), data.note, data.checklist, user, rto_stage)
+        if doc is None:
+            results.append({'unit_id': unit_id, 'status': 'not_eligible'})
+        else:
+            results.append({'unit_id': unit_id, 'status': 'requested', 'inspection_id': doc['id']})
+    return {'results': results}
+
+@router.post('/projects/{pid}/rto-walk/proposals')
+async def rto_walk_proposals(pid: str, data: RtoWalkProposalsIn, user: dict = Depends(require_roles(*OPS_ROLES))):
+    """Record walk outcomes on pending inspections (v2.1 §D.2). A proposal
+    never touches status/decided_by/decided_at; re-submitting overwrites
+    the proposal fields (correction before decision) and logs again."""
+    await get('projects', pid)
+    results = []
+    for item in data.items:
+        inspection = await database().inspections.find_one({'id': item.inspection_id, 'project_id': pid}, {'_id': 0})
+        if not inspection:
+            results.append({'inspection_id': item.inspection_id, 'status': 'not_found'})
+            continue
+        if inspection['status'] != 'pending':
+            results.append({'inspection_id': item.inspection_id, 'status': 'already_decided'})
+            continue
+        await database().inspections.update_one({'id': item.inspection_id}, {'$set': {
+            'proposed_result': item.result,
+            'proposed_by': {'id': user['id'], 'name': user['name']},
+            'proposed_at': now()}})
+        await log(pid, 'inspection', f"Proposed outcome recorded · {inspection['unit_label']} · {item.result} · by {user['name']}", user)
+        results.append({'inspection_id': item.inspection_id, 'status': 'proposed'})
+    return {'results': results}
+
+@router.post('/projects/{pid}/rto-walk/decisions')
+async def rto_walk_decisions(pid: str, data: RtoWalkDecisionsIn, user: dict = Depends(require_roles(*DECIDE_ROLES))):
+    """Batch decisions (DECIDE roles only). Each item either confirms the
+    recorded proposal (result omitted) or overrides it with an explicit
+    result; the write itself is _apply_rto_decision, unchanged."""
+    project = await _project_with_stages(pid)
+    if _rto_index(project['workflow_stages']) < 0:
+        raise HTTPException(400, 'This project has no RTO approval stage')
+    results = []
+    for item in data.items:
+        inspection = await database().inspections.find_one({'id': item.inspection_id, 'project_id': pid}, {'_id': 0})
+        if not inspection:
+            results.append({'inspection_id': item.inspection_id, 'status': 'not_found'})
+            continue
+        if inspection['status'] != 'pending':
+            results.append({'inspection_id': item.inspection_id, 'status': 'already_decided'})
+            continue
+        result = item.result or inspection.get('proposed_result')
+        if result not in ('approved', 'rework'):
+            results.append({'inspection_id': item.inspection_id, 'status': 'no_result'})
+            continue
+        ok = await _apply_rto_decision(inspection, result, data.inspector, data.note, user)
+        results.append({'inspection_id': item.inspection_id, 'status': 'decided' if ok else 'conflict', 'result': result if ok else None})
+    return {'results': results}
 
 @router.post('/units/{id}/points', response_model=Record)
 async def add_point(id: str, data: PointIn, user: dict = Depends(require_roles(*OPS_ROLES))):

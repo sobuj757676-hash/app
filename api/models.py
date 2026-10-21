@@ -98,6 +98,30 @@ class DecisionIn(BaseModel):
     inspector: str = Field(min_length=2, max_length=100)
     note: str = Field(min_length=1, max_length=2000)
 
+class RtoWalkRequestsIn(BaseModel):
+    unit_ids: list[str] = Field(min_length=1, max_length=500)
+    inspector: str = Field(min_length=2, max_length=100)
+    date: date
+    note: str = Field(default='', max_length=2000)
+    checklist: list[ChecklistItemIn] | None = None
+
+class RtoWalkProposalItem(BaseModel):
+    inspection_id: str
+    result: Literal['approved', 'rework']
+
+class RtoWalkProposalsIn(BaseModel):
+    items: list[RtoWalkProposalItem] = Field(min_length=1, max_length=500)
+
+class RtoWalkDecisionItem(BaseModel):
+    inspection_id: str
+    # None = confirm the recorded proposal (spec v2.1 §D.3).
+    result: Literal['approved', 'rework'] | None = None
+
+class RtoWalkDecisionsIn(BaseModel):
+    items: list[RtoWalkDecisionItem] = Field(min_length=1, max_length=500)
+    inspector: str = Field(min_length=2, max_length=100)
+    note: str = Field(default='RTO walk', max_length=2000)
+
 class PointIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     kind: Literal['power', 'light', 'socket', 'switch', 'aircon', 'heater', 'fan', 'data', 'tv'] = 'power'

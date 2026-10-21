@@ -12,6 +12,7 @@ import Overview from './pages/Overview';
 import WorkerHome from './pages/WorkerHome';
 import UnitTracker from './pages/UnitTracker';
 import Inspections from './pages/Inspections';
+import RtoWalk from './pages/RtoWalk';
 import Defects from './pages/Defects';
 import Tasks from './pages/Tasks';
 import Testing from './pages/Testing';
@@ -85,6 +86,7 @@ function Shell(){
    <Route path="/projects" element={<Projects/>}/>
    <Route path="/units" element={<UnitTracker/>}/>
    <Route path="/inspections" element={<Inspections/>}/>
+   <Route path="/rto-walk" element={<RtoWalk/>}/>
    <Route path="/defects" element={<Defects/>}/>
    <Route path="/tasks" element={<Tasks/>}/>
    <Route path="/testing" element={<Testing/>}/>

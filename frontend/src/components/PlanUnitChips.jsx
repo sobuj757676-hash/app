@@ -8,11 +8,11 @@ import {staleUnits,plannedUnitIds,completedUnitIds,resolveStage} from '../lib/pl
 // `busy` = task id currently syncing (disables while a PATCH is in flight).
 // `advancedIds` = units this task already advanced (spec v2.1): rendered
 // checked + locked — visible context, never interactive again.
-export function UnitCheckboxes({task,data,checked,onToggle,busy,testPrefix,advancedIds}){
+export function UnitCheckboxes({task,data,checked,onToggle,busy,testPrefix,advancedIds,large}){
  const {t}=useLanguage();
  const ids=plannedUnitIds(task);
  const adv=new Set(advancedIds||[]);
- return <div className="unit-chips" role="group" aria-label={String(task.id)}>
+ return <div className={`unit-chips${large?' large':''}`} role="group" aria-label={String(task.id)}>
   {ids.map(id=>{
    const u=data.units.find(x=>x.id===id);
    const isC=checked.includes(id);

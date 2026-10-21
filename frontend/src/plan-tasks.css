@@ -124,3 +124,27 @@ tr.selected td{background:var(--blue-soft)}
 /* Top-notch Phase 2: Recent Pairs chips in the compose sheet */
 .pair-chips{display:flex;gap:6px;flex-wrap:wrap}
 .pair-chip{min-height:36px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--page);font-size:12px;font-weight:600;color:var(--text);cursor:pointer}
+
+/* Top-notch Phase 3: RTO Walk + worker chip size + proposed lines */
+.unit-chips.large .unit-chip{min-height:56px;font-size:14px;padding:0 16px 0 12px}
+.unit-chips.large .unit-chip input[type=checkbox]{width:22px;height:22px}
+.lens-walk{margin-left:auto;min-height:32px;padding:0 12px;border:1px solid var(--blue);border-radius:999px;background:var(--blue-soft);color:var(--blue);font-size:12px;font-weight:700;cursor:pointer}
+.proposed-line{margin-top:4px;font-size:12px;font-weight:600;color:var(--warning)}
+.walk-local-banner{display:flex;align-items:center;gap:8px;margin:10px 0;padding:9px 12px;border:1px solid var(--warning);border-radius:10px;background:var(--warning-soft);color:var(--warning);font-size:13px;font-weight:700}
+.walk-inspector{display:flex;flex-direction:column;gap:6px;max-width:340px;margin:10px 0 4px;font-size:13px;font-weight:600}
+.walk-inspector input{min-height:44px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text);font-size:14px}
+.walk-floors{display:flex;flex-direction:column;gap:18px;margin-top:12px}
+.walk-floor{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:14px}
+.walk-floor h3{margin:0 0 10px;font-size:15px}
+.walk-units{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.walk-unit{display:inline-flex;align-items:center;gap:8px;min-height:52px;padding:8px 14px;border:1px solid var(--line);border-radius:11px;background:var(--page);color:var(--text);cursor:pointer;text-align:left}
+.walk-unit .walk-unit-label{font-size:14px;font-weight:700}
+.walk-unit .walk-unit-sub{font-size:11px;color:var(--muted-text);font-weight:600}
+.walk-unit.pass{border-color:var(--success);background:var(--success-soft)}
+.walk-unit.fail{border-color:var(--danger);background:var(--danger-soft)}
+.walk-unit.locked{opacity:.75;cursor:default}
+.walk-mark{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800}
+.walk-mark.pass{color:var(--success)}
+.walk-mark.fail{color:var(--danger)}
+.walk-report{margin-top:16px;border:1px solid var(--line);border-radius:12px;background:var(--soft);padding:12px 14px;font-size:13px}
+.walk-commit-bar{position:sticky;bottom:10px;margin-top:16px;display:flex;justify-content:flex-end}
