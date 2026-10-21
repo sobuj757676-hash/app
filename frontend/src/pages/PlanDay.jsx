@@ -13,7 +13,6 @@ import {Button} from '../components/ui/button';
 import {AssigneeMultiSelect} from '../components/AssigneeMultiSelect';
 import {toast} from 'sonner';
 
-const PRIS=['low','medium','high','urgent'];
 const canPlan=u=>['admin','manager','engineer','supervisor'].includes(u?.role);
 
 // "Blk 40A · L12 · Wire pulling — 5 units" for a planned task's scope (1 unit / N units grammar).
@@ -46,11 +45,14 @@ function PlanCard({task,onToggle,toggling,onAdvance,advBusy,adv,onReassign,onCan
  const b=data.blocks.find(x=>x.id===s.block_id);
  const [priBusy,setPriBusy]=useState(false);
  const [confirming,setConfirming]=useState(false);
- const setPri=async p=>{if(p===task.priority||priBusy)return;setPriBusy(true);
-  try{await mutate('patch',`/tasks/${task.id}`,{priority:p});}catch{/* toasted by mutate */}finally{setPriBusy(false);}};
+ // Priority declutter (spec v2 Phase 2): no 4-way select on plan cards.
+ // The tag renders only for high/urgent; urgency is toggled by one
+ // explicit action (urgent <-> medium). Field and values are unchanged.
+ const setUrgent=async on=>{if(priBusy)return;setPriBusy(true);
+  try{await mutate('patch',`/tasks/${task.id}`,{priority:on?'urgent':'medium'});}catch{/* toasted by mutate */}finally{setPriBusy(false);}};
  return <div className="plan-card" data-testid={`plan-item-${task.id}`}>
   <div className="task-top"><StatusBadge value={task.status} id={`plan-status-${task.id}`}/>
-   <label className="plan-pri"><span>{t('priority')}</span><select data-testid={`plan-priority-${task.id}`} value={task.priority} disabled={priBusy} onChange={e=>setPri(e.target.value)}>{PRIS.map(p=><option key={p} value={p}>{t(p)}</option>)}</select></label></div>
+   {['high','urgent'].includes(task.priority)&&<span className={`priority-tag ${task.priority}`} data-testid={`plan-priority-tag-${task.id}`}>{t(task.priority)}</span>}</div>
   <strong>{t('blk')} {b?.name||s.block||'?'} · L{s.level??'?'} — {resolveStage(data,s.stage_index,t)}</strong>
   {task.description&&<p className="task-desc">{task.description}</p>}
   <StaleFlag task={task} data={data} testPrefix={`plan-stale-${task.id}`}/>
@@ -59,6 +61,9 @@ function PlanCard({task,onToggle,toggling,onAdvance,advBusy,adv,onReassign,onCan
   {adv?.taskId===task.id&&<ul className="adv-report" data-testid={`plan-adv-report-${task.id}`}>{adv.results.map((r,i)=>{const u=data.units.find(x=>x.id===(r.unit_id||r.id));const ok=r.result==='advanced'||r.result==='already_advanced';const txt=r.result==='advanced'?t('done'):r.result==='already_advanced'?t('alreadyAdvanced'):r.result==='conflict_ahead'||r.result==='conflict_behind'?t('advConflict'):r.result==='blocked_rto'?t('advBlockedRto'):r.result==='blocked_defect'?`${t('advBlockedDefect')}${r.detail?`: ${r.detail}`:''}`:r.result==='blocked_tests'?t('advBlockedTests'):(r.detail||r.result||'—');return <li key={i} className={ok?'':'adv-err'}>{u?`${t('blk')} ${u.block} · ${label(u)}`:(r.unit_label||r.unit_id||'—')} — {txt}</li>;})}</ul>}
   <div className="plan-item-actions">
    <button type="button" className="table-action" data-testid={`plan-reassign-${task.id}`} onClick={onReassign}>{t('reassign')}</button>
+   {live&&(task.priority==='urgent'
+    ?<button type="button" className="table-action" data-testid={`plan-clear-urgent-${task.id}`} disabled={priBusy} onClick={()=>setUrgent(false)}>{t('clearUrgent')}</button>
+    :<button type="button" className="table-action" data-testid={`plan-mark-urgent-${task.id}`} disabled={priBusy} onClick={()=>setUrgent(true)}>{t('markUrgent')}</button>)}
    {live&&(confirming
     ?<span className="confirm-inline" data-testid={`plan-cancel-confirm-${task.id}`}><span>{t('cancelTaskConfirm')}</span><button type="button" className="table-action danger" data-testid={`plan-cancel-yes-${task.id}`} onClick={()=>{setConfirming(false);onCancel();}}>{t('yes')}</button><button type="button" className="table-action" data-testid={`plan-cancel-no-${task.id}`} onClick={()=>setConfirming(false)}>{t('no')}</button></span>
     :<button type="button" className="table-action danger" data-testid={`plan-cancel-${task.id}`} onClick={()=>setConfirming(true)}>{t('cancel')}</button>)}

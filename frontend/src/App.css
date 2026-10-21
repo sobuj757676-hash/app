@@ -178,3 +178,12 @@
 .empty p{margin:0}
 .empty-action{margin-top:14px;display:flex;justify-content:center;gap:10px}
 @media(pointer:coarse){.icon-button{width:40px;height:40px}.table-action{min-height:40px;padding:10px 14px}.row-actions{gap:8px}.checklist-actions{gap:8px}}
+/* Top-notch Phase 2: tracker lenses, dimming, level-row select */
+.lens-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:2px 0 12px}
+.lens-bar>button{min-height:36px;padding:6px 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:12px;font-weight:600;color:var(--muted-text);cursor:pointer}
+.lens-bar>button.active{background:#3369eb;border-color:#3369eb;color:#fff}
+.lens-split{font-size:11px;color:var(--muted-text)}
+.unit-cell.lens-dim{opacity:.55}
+tr.lens-dim{opacity:.55}
+.matrix-level.level-btn{border:none;background:transparent;font:inherit;color:inherit;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.assignee-load{color:var(--muted-text);font-weight:600}

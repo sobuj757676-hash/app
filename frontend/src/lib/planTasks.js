@@ -92,3 +92,93 @@ export const toggleCompletedIds=(task,id)=>{const cur=completedUnitIds(task);ret
 // from the planned stage_index, or its RTO state is 'rework'.
 export const staleUnits=(task,data)=>{const s=task.scope||{};return (s.unit_ids||[]).map(id=>data.units.find(u=>u.id===id)).filter(Boolean).filter(u=>u.rto==='rework'||u.stage!==s.stage_index);};
 export const isPlannedTask=x=>(x.kind==='planned'||(!x.kind&&x.plan_date))&&!!x.plan_date;
+// ---- Top-notch Phase 2 (spec v2): tracker lenses, Recent Pairs, load ----
+// Every predicate derives from the project's workflow_stages — the RTO
+// gate is wherever requires_rto sits, never a hardcoded stage number.
+// Index of the RTO gate stage (-1 when the project has none).
+export const gateIndexOf=data=>stagesOf(data).findIndex(s=>s.requires_rto);
+// Unit ids already spoken for on a date: any live (not cancelled) planned
+// task with that plan_date. Done tasks still count — their units were
+// planned for that day even if some never advanced.
+export const plannedUnitIdSet=(tasks,dateStr)=>{
+ const set=new Set();
+ for(const x of tasks||[]){
+  if(!isPlannedTask(x)||x.plan_date!==dateStr||x.status==='cancelled')continue;
+  for(const id of plannedUnitIds(x))set.add(id);
+ }
+ return set;
+};
+// Mirror of the backend's open-critical-defect rule (_advance_blocker).
+export const hasOpenCriticalDefect=(data,unitId)=>(data.defects||[]).some(d=>d.unit_id===unitId&&d.severity==='critical'&&!['verified','cancelled'].includes(d.status));
+// Ready (spec v2 Phase 2): not complete, current stage is not the RTO
+// gate, no RTO decision pending, not planned for the date, and no open
+// critical defect.
+export const isReadyUnit=(data,u,dateStr,plannedSet)=>{
+ const stages=stagesOf(data);
+ if(!u||u.stage>=stages.length)return false;
+ if(stages[u.stage]?.requires_rto)return false;
+ if(u.rto==='pending')return false;
+ if(plannedSet.has(u.id))return false;
+ return !hasOpenCriticalDefect(data,u.id);
+};
+export const lensPass=(data,u,lens,dateStr,plannedSet)=>{
+ if(lens==='ready')return isReadyUnit(data,u,dateStr,plannedSet);
+ if(lens==='rto')return u.stage===gateIndexOf(data);
+ return true;
+};
+// RTO queue: units sitting at the gate stage, split by rto sub-state.
+export const rtoQueueCounts=data=>{
+ const g=gateIndexOf(data);const out={total:0,none:0,pending:0,rework:0,approved:0};
+ if(g<0)return out;
+ for(const u of data.units||[]){
+  if(u.stage!==g)continue;
+  out.total++;
+  out[['none','pending','rework','approved'].includes(u.rto)?u.rto:'none']++;
+ }
+ return out;
+};
+// Recent Pairs (compose): assignee sets from planned tasks of the last
+// 7 days (inclusive), grouped by set, ranked by frequency then recency.
+// Returns [{ids, names, count, last}] — names from the most recent task
+// that used the set.
+export const recentPairs=(tasks,todayStr,limit=3)=>{
+ const [y,m,d]=todayStr.split('-').map(Number);
+ const fromStr=new Date(Date.UTC(y,m-1,d-7)).toISOString().slice(0,10);
+ const byKey=new Map();
+ for(const x of tasks||[]){
+  if(!isPlannedTask(x)||x.plan_date<fromStr||x.plan_date>todayStr)continue;
+  const ids=[...(x.assignees||[])];
+  if(!ids.length)continue;
+  const key=[...ids].sort().join(',');
+  const cur=byKey.get(key)||{ids,names:x.assignee_names||[],count:0,last:x.plan_date};
+  cur.count++;
+  if(x.plan_date>=cur.last){cur.last=x.plan_date;if(x.assignee_names?.length)cur.names=x.assignee_names;}
+  byKey.set(key,cur);
+ }
+ return [...byKey.values()].sort((a,b)=>b.count-a.count||(a.last<b.last?1:-1)).slice(0,limit);
+};
+// Live load: per-worker set union of unit ids over a date's live planned
+// tasks (not cancelled). A unit shared by two tasks counts once.
+export const todayLoadSets=(tasks,dateStr)=>{
+ const map=new Map();
+ for(const x of tasks||[]){
+  if(!isPlannedTask(x)||x.plan_date!==dateStr||x.status==='cancelled')continue;
+  for(const a of x.assignees||[]){
+   if(!map.has(a))map.set(a,new Set());
+   const s=map.get(a);for(const id of plannedUnitIds(x))s.add(id);
+  }
+ }
+ return map;
+};
+// A worker's load as shown in the compose sheet for one group: today's
+// persisted load plus units of OTHER draft groups assigned to them.
+// There is deliberately no threshold — no capacity rule exists.
+export const draftLoadCount=(loadSets,groups,cfg,workerId,exceptKey)=>{
+ const s=new Set(loadSets.get(workerId)||[]);
+ for(const g of groups){
+  if(g.key===exceptKey)continue;
+  const c=cfg[g.key];
+  if(c&&(c.assignees||[]).includes(workerId))for(const u of g.units)s.add(u.id);
+ }
+ return s.size;
+};

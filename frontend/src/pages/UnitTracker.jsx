@@ -5,6 +5,7 @@ import {useLanguage} from '../lib/i18n';
 import {useWorkspace} from '../lib/store';
 import {useAuth,canWrite} from '../lib/auth';
 import {label,status,percent,stageName,stagesOf,api,today} from '../lib/api';
+import {plannedUnitIdSet,lensPass,rtoQueueCounts,recentPairs,todayLoadSets,draftLoadCount} from '../lib/planTasks';
 import {PageTitle,ExportButton,Action,StatusBadge,ProgressBar,Empty,FormModal} from '../components/Common';
 import {AssigneeMultiSelect} from '../components/AssigneeMultiSelect';
 import {toast} from 'sonner';
@@ -28,6 +29,17 @@ export default function UnitTracker(){
  const [selected,setSelected]=useState([]);
  const [sheet,setSheet]=useState(false);
  const toggleUnit=id=>setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+ // Top-notch Phase 2 lenses: All / Ready / RTO queue — predicates derive
+ // from workflow_stages via lib/planTasks; non-matching cells dim and are
+ // non-tappable in select mode. Selectable = lens-passing AND not already
+ // in a live planned task for today (the compose date).
+ const [lens,setLens]=useState('all');
+ const dateStr=today();
+ const plannedSet=useMemo(()=>plannedUnitIdSet(data.tasks||[],dateStr),[data.tasks,dateStr]);
+ const rtoCounts=useMemo(()=>rtoQueueCounts(data),[data]);
+ const pass=u=>lensPass(data,u,lens,dateStr,plannedSet);
+ const selectable=u=>pass(u)&&!plannedSet.has(u.id);
+ const tryToggle=u=>{if(selected.includes(u.id)||selectable(u))toggleUnit(u.id);};
  const toggleSelect=()=>{const p=Object.fromEntries(params.entries());if(selecting){delete p.select;setSelecting(false);setSelected([]);}else{p.select='1';setSelecting(true);}setParams(p);};
  const wasOpen=useRef(false);
  // Deep-link: ?unit=<uid> opens the drawer (and selects its block tab) on load/param change
@@ -51,6 +63,14 @@ export default function UnitTracker(){
  const floors=[...new Set(blockUnits.map(u=>u.level))].sort((a,b)=>b-a);
  const stacks=[...new Set(blockUnits.map(u=>u.number))].sort((a,b)=>Number(a)-Number(b));
  const cells=useMemo(()=>Object.fromEntries(filtered.map(u=>[`${u.level}-${u.number}`,u])),[filtered]);
+ // Level-row select (select mode): toggles every selectable unit rendered
+ // on that floor; when all selectable are already in, tapping clears the floor.
+ const toggleFloor=l=>{
+  const floorUnits=filtered.filter(u=>u.level===l);
+  const addable=floorUnits.filter(u=>selectable(u)&&!selected.includes(u.id));
+  if(!addable.length)setSelected(s=>s.filter(id=>!floorUnits.some(u=>u.id===id)));
+  else setSelected(s=>[...new Set([...s,...addable.map(u=>u.id)])]);
+ };
  const chooseBlock=id=>{setBlock(id);setLevel('all');setParams({...Object.fromEntries(params.entries()),block:id});};
  const openUnit=u=>{setSelectedUnit(u.id);setParams({block:u.block_id,unit:u.id});};
  return <div className="page-enter">
@@ -72,19 +92,25 @@ export default function UnitTracker(){
    <select value={filter} onChange={e=>setFilter(e.target.value)} data-testid="unit-status-filter"><option value="all">{t('allStatuses')}</option>{statuses.map(s=><option key={s} value={s}>{t(s)}</option>)}</select>
    <div className="view-toggle"><button title={t('matrix')} disabled={allBlocks} data-testid="matrix-view" onClick={()=>setMode('matrix')} className={mode==='matrix'&&!allBlocks?'active':''}><Grid2X2 size={17}/></button><button title={t('list')} data-testid="list-view" onClick={()=>setMode('list')} className={mode==='list'||allBlocks?'active':''}><List size={18}/></button></div>
   </div>
+  <div className="lens-bar" data-testid="lens-bar" role="group" aria-label={t('units')}>
+   <button type="button" data-testid="lens-all" className={lens==='all'?'active':''} onClick={()=>setLens('all')}>{t('all')}</button>
+   <button type="button" data-testid="lens-ready" className={lens==='ready'?'active':''} onClick={()=>setLens('ready')}>{t('lensReady')}</button>
+   <button type="button" data-testid="lens-rto" className={lens==='rto'?'active':''} onClick={()=>setLens('rto')}>{t('lensRtoQueue')} ({rtoCounts.total})</button>
+   {lens==='rto'&&<span className="lens-split" data-testid="lens-rto-split">{rtoCounts.none} {t('rtoAwaiting')} · {rtoCounts.pending} {t('rtoDeciding')} · {rtoCounts.rework} {t('rework')}</span>}
+  </div>
   {!filtered.length?<Empty text={t('noUnits')}/>:mode==='matrix'&&!allBlocks?
    <div className="matrix-scroll" data-testid="floor-matrix"><div className={`floor-matrix${selecting?' selecting':''}`} style={{gridTemplateColumns:`64px repeat(${stacks.length}, minmax(50px, 1fr))`}}>
     <div className="matrix-corner">{t('level')}</div>{stacks.map(n=><div className="matrix-column" key={n}>#{n}</div>)}
     {floors.filter(l=>level==='all'||l===Number(level)).map(l=><div className="matrix-row" key={l}>
-     <div className="matrix-level">{String(l).padStart(2,'0')}</div>
-     {stacks.map(n=>{const u=cells[`${l}-${n}`];if(!u)return <div className="unit-cell unavailable" key={n}>—</div>;const sel=selecting&&selected.includes(u.id);return <button key={n} data-testid={`matrix-unit-${u.id}`} aria-label={`${t('block')} ${u.block} ${label(u)} ${t(selecting?'selectMode':status(u,sc))}`} aria-pressed={selecting?sel:undefined} title={selecting?`${label(u)} · ${t('selectMode')}`:`${label(u)} · ${u.stage>=sc?t('completed'):stageName(stages[u.stage],t)}`} className={`unit-cell ${status(u,sc)}${sel?' selected':''}`} onClick={()=>selecting?toggleUnit(u.id):openUnit(u)}>{selecting?<span className="select-box">{sel&&<Check size={16}/>}</span>:u.stage>=sc?<Check size={16}/>:u.rto==='pending'?<Clock3 size={16}/>:u.rto==='rework'?<AlertTriangle size={16}/>:<span>{u.stage}<small>/{sc}</small></span>}</button>;})}
+     {selecting?<button type="button" className="matrix-level level-btn" data-testid={`level-select-${l}`} title={t('selectMode')} onClick={()=>toggleFloor(l)}>{String(l).padStart(2,'0')}</button>:<div className="matrix-level">{String(l).padStart(2,'0')}</div>}
+     {stacks.map(n=>{const u=cells[`${l}-${n}`];if(!u)return <div className="unit-cell unavailable" key={n}>—</div>;const sel=selecting&&selected.includes(u.id);const dim=!pass(u);const dis=selecting&&!sel&&!selectable(u);return <button key={n} data-testid={`matrix-unit-${u.id}`} aria-label={`${t('block')} ${u.block} ${label(u)} ${t(selecting?'selectMode':status(u,sc))}`} aria-pressed={selecting?sel:undefined} aria-disabled={dis||undefined} title={selecting?`${label(u)} · ${t('selectMode')}`:`${label(u)} · ${u.stage>=sc?t('completed'):stageName(stages[u.stage],t)}`} className={`unit-cell ${status(u,sc)}${sel?' selected':''}${dim?' lens-dim':''}`} onClick={()=>selecting?tryToggle(u):openUnit(u)}>{selecting?<span className="select-box">{sel&&<Check size={16}/>}</span>:u.stage>=sc?<Check size={16}/>:u.rto==='pending'?<Clock3 size={16}/>:u.rto==='rework'?<AlertTriangle size={16}/>:<span>{u.stage}<small>/{sc}</small></span>}</button>;})}
     </div>)}
    </div></div>:
    <div className="table-scroll tracker-list"><table data-testid="units-table">
     <thead><tr>{selecting&&<th/>}{['block','unit','unitType','currentStage','team','status','progress'].map(k=><th key={k}>{t(k)}</th>)}<th/></tr></thead>
-    <tbody>{filtered.map(u=>{const sel=selecting&&selected.includes(u.id);return <tr key={u.id} data-testid={`unit-row-${u.id}`} className={sel?'selected':''}>
-     {selecting&&<td><label className="row-select-wrap"><input type="checkbox" data-testid={`select-unit-${u.id}`} checked={sel} onChange={()=>toggleUnit(u.id)} aria-label={`${t('selectMode')} ${label(u)}`}/></label></td>}
-     <td>{u.block}</td><td><button className="unit-link" data-testid={`open-unit-${u.id}`} onClick={()=>selecting?toggleUnit(u.id):openUnit(u)}>{label(u)}</button></td><td>{u.unit_type}</td><td>{u.stage>=sc?t('completed'):stageName(stages[u.stage],t)}</td><td>{u.assigned_to||t('unassigned')}</td><td><StatusBadge id={`unit-status-${u.id}`} value={status(u,sc)}/></td><td><span className="mono">{u.stage}/{sc}</span></td><td><button className="icon-button" title={t('view')} data-testid={`unit-detail-${u.id}`} onClick={()=>openUnit(u)}><ArrowUpRight size={17}/></button></td>
+    <tbody>{filtered.map(u=>{const sel=selecting&&selected.includes(u.id);const dim=!pass(u);return <tr key={u.id} data-testid={`unit-row-${u.id}`} className={`${sel?'selected':''}${dim?' lens-dim':''}`}>
+     {selecting&&<td><label className="row-select-wrap"><input type="checkbox" data-testid={`select-unit-${u.id}`} checked={sel} disabled={!sel&&!selectable(u)} onChange={()=>tryToggle(u)} aria-label={`${t('selectMode')} ${label(u)}`}/></label></td>}
+     <td>{u.block}</td><td><button className="unit-link" data-testid={`open-unit-${u.id}`} onClick={()=>selecting?tryToggle(u):openUnit(u)}>{label(u)}</button></td><td>{u.unit_type}</td><td>{u.stage>=sc?t('completed'):stageName(stages[u.stage],t)}</td><td>{u.assigned_to||t('unassigned')}</td><td><StatusBadge id={`unit-status-${u.id}`} value={status(u,sc)}/></td><td><span className="mono">{u.stage}/{sc}</span></td><td><button className="icon-button" title={t('view')} data-testid={`unit-detail-${u.id}`} onClick={()=>openUnit(u)}><ArrowUpRight size={17}/></button></td>
     </tr>;})}</tbody>
    </table></div>
   }
@@ -113,6 +139,11 @@ function PlanSheet({unitIds,onClose,onDone}){
  const loadDir=()=>{setDirErr(false);api.get('/auth/directory').then(r=>setDir(r.data)).catch(()=>setDirErr(true));};
  useEffect(loadDir,[]);
  const setG=(key,patch)=>setCfg(c=>({...c,[key]:{assignees:[],priority:'medium',note:'',...(c[key]||{}),...patch}}));
+ // Phase 2: Recent Pairs (last 7 days of planned tasks) + live load counts
+ // (persisted today-load set-union, extended by other open draft groups).
+ const pairs=useMemo(()=>recentPairs(data.tasks||[],today()),[data.tasks]);
+ const loadSets=useMemo(()=>todayLoadSets(data.tasks||[],today()),[data.tasks]);
+ const loadFor=(workerId,exceptKey)=>{const n=draftLoadCount(loadSets,groups,cfg,workerId,exceptKey);return n?`· ${n} ${t('uToday')}`:null;};
  const submit=async()=>{setBusy(true);try{const d=today();for(const g of groups){const c={assignees:[],priority:'medium',note:'',...(cfg[g.key]||{})};await mutate('post',`/projects/${pid}/tasks`,{title:`${stageLabel(g)} — ${t('blk')} ${g.block} L${g.level} (${g.units.length} units)`,description:c.note||null,kind:'planned',scope:{block_id:g.block_id,level:g.level,stage_index:g.stage_index,unit_ids:g.units.map(u=>u.id)},plan_date:d,due_date:d,assignees:c.assignees,priority:c.priority,completed_unit_ids:[]});}toast.success(t('saved'));onDone();}catch{}finally{setBusy(false);}};
  return <div className="plan-compose-overlay" data-testid="plan-sheet">
   <div className="plan-compose-sheet" role="dialog" aria-modal="true" aria-label={t('planSheetTitle')}>
@@ -120,11 +151,12 @@ function PlanSheet({unitIds,onClose,onDone}){
    <div className="plan-compose-body">
     {groups.map((g,gi)=>{const c={assignees:[],priority:'medium',note:'',...(cfg[g.key]||{})};return <div className="plan-group-card" key={g.key} data-testid={`plan-group-${gi}`}>
      <div className="plan-group-line" data-testid={`plan-group-title-${gi}`}>{t('blk')} {g.block} · L{g.level} · {stageLabel(g)} — {g.units.length} {t('unitCount')}</div>
+     {!!pairs.length&&<><span className="field-label">{t('recentPairs')}</span><div className="pair-chips" data-testid={`plan-group-${gi}-pairs`}>{pairs.map((p,pi)=><button key={pi} type="button" className="pair-chip" data-testid={`plan-group-${gi}-pair-${pi}`} onClick={()=>setG(g.key,{assignees:[...p.ids]})}>{p.names.join(' + ')}</button>)}</div></>}
      <span className="field-label">{t('workersLabel')}</span>
-     <AssigneeMultiSelect directory={dir} value={c.assignees} onChange={ids=>setG(g.key,{assignees:ids})} id={`plan-group-${gi}-workers`}/>
+     <AssigneeMultiSelect directory={dir} value={c.assignees} onChange={ids=>setG(g.key,{assignees:ids})} id={`plan-group-${gi}-workers`} loadText={u=>loadFor(u.id,g.key)}/>
      {dirErr&&<div className="inline-error" role="alert" data-testid={`plan-group-${gi}-directory-error`}><span>{t('directoryLoadFailed')}</span><button type="button" className="text-link" onClick={loadDir}>{t('retry')}</button></div>}
      <span className="field-label">{t('priority')}</span>
-     <div className="seg-control" role="radiogroup" aria-label={t('priority')}>{['low','medium','high'].map(p=><button key={p} type="button" role="radio" aria-checked={c.priority===p} data-testid={`plan-group-${gi}-pri-${p}`} className={c.priority===p?'active':''} onClick={()=>setG(g.key,{priority:p})}>{t(p)}</button>)}</div>
+     <div className="seg-control" role="radiogroup" aria-label={t('priority')}>{['low','medium','high','urgent'].map(p=><button key={p} type="button" role="radio" aria-checked={c.priority===p} data-testid={`plan-group-${gi}-pri-${p}`} className={c.priority===p?'active':''} onClick={()=>setG(g.key,{priority:p})}>{t(p)}</button>)}</div>
      <span className="field-label">{t('noteOptional')}</span>
      <input className="plan-note" data-testid={`plan-group-${gi}-note`} value={c.note} onChange={e=>setG(g.key,{note:e.target.value})} maxLength={200} placeholder={t('noteOptional')}/>
     </div>;})}

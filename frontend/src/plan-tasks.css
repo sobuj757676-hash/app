@@ -65,7 +65,7 @@ tr.selected td{background:var(--blue-soft)}
 .plan-compose-foot .action{width:100%;justify-content:center;min-height:48px;font-size:13px!important}
 .plan-group-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
 .plan-group-card .field-label{display:block;font-size:12px;font-weight:600;color:var(--muted-text);margin:12px 0 8px}
-.seg-control{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.seg-control{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .seg-control button{min-height:44px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:13px;font-weight:600;color:var(--text)}
 .seg-control button.active{background:#3369eb;border-color:#3369eb;color:#fff}
 .plan-note{width:100%;min-height:44px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:14px;background:var(--surface);color:var(--text)}
@@ -120,3 +120,7 @@ tr.selected td{background:var(--blue-soft)}
 .plan-advance-bar{position:sticky;bottom:10px;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding:10px 14px;border-radius:12px;background:var(--text);color:var(--surface);box-shadow:0 6px 20px rgba(0,0,0,.25);font-size:13px;font-weight:600}
 .advance-bar-btn{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:0 16px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-size:13px;font-weight:700;cursor:pointer}
 .advance-bar-btn:disabled{opacity:.6}
+
+/* Top-notch Phase 2: Recent Pairs chips in the compose sheet */
+.pair-chips{display:flex;gap:6px;flex-wrap:wrap}
+.pair-chip{min-height:36px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--page);font-size:12px;font-weight:600;color:var(--text);cursor:pointer}
