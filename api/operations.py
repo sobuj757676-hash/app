@@ -1,7 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Depends
-from models import Record, WorkerIn, AttendanceIn, MaterialIn, MovementIn, ExpenseIn, AttendanceMeIn
+from models import Record, WorkerIn, AttendanceIn, MaterialIn, MovementIn, ExpenseIn, AttendanceMeIn, AttendanceBatchIn
 from routes import database, get, uid, now, save, log, log_change
 from auth import get_current_user, require_roles, OPS_ROLES, MONEY_ROLES
 
@@ -64,6 +64,36 @@ async def attendance(id: str, data: AttendanceIn, user: dict = Depends(require_r
     await database().attendance.update_one({'worker_id': id, 'date': doc['date']}, {'$set': doc}, upsert=True)
     await log(worker['project_id'], 'workforce', f'{worker["name"]} · Attendance marked {data.status} ({doc["date"]})', user)
     return doc
+
+@router.post('/projects/{pid}/attendance/batch')
+async def attendance_batch(pid: str, data: AttendanceBatchIn, user: dict = Depends(require_roles(*OPS_ROLES))):
+    """Supervisor roll-call: one submit writes the whole gang's attendance.
+
+    Upserts per (worker_id, date) with the same doc shape as the single
+    PUT /workers/{id}/attendance, and stamps marked_by — a supervisor entry
+    is the source of truth and overwrites a worker's self-mark for the day.
+    """
+    await get('projects', pid)
+    saved = []
+    for e in data.entries:
+        worker = await database().workers.find_one({'id': e.worker_id, 'project_id': pid}, {'_id': 0})
+        if not worker:
+            raise HTTPException(400, f'Unknown worker for this project: {e.worker_id}')
+        if not worker.get('active'):
+            raise HTTPException(400, f'Worker is archived: {worker["name"]}')
+        ds = e.date.isoformat()
+        doc = {'id': f'{e.worker_id}-{ds}', 'project_id': pid, 'worker_id': e.worker_id,
+               'date': ds, 'status': e.status,
+               'hours': e.hours if e.status == 'present' else 0,
+               'daily_rate': worker['daily_rate'], 'marked_by': user['id']}
+        existing = await database().attendance.find_one({'worker_id': e.worker_id, 'date': ds}, {'_id': 0})
+        if existing:
+            doc['id'] = existing['id']
+        await database().attendance.update_one({'worker_id': e.worker_id, 'date': ds}, {'$set': doc}, upsert=True)
+        saved.append(doc)
+    await log(pid, 'workforce', f'Roll-call attendance recorded for {len(saved)} workers', user)
+    return {'saved': len(saved), 'records': saved}
+
 
 @router.post('/projects/{pid}/materials', response_model=Record)
 async def material(pid: str, data: MaterialIn, user: dict = Depends(require_roles(*OPS_ROLES))):

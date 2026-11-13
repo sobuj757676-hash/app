@@ -1,3 +1,4 @@
+import os
 import uuid
 import copy
 import csv
@@ -335,6 +336,22 @@ async def bulk_advance(pid: str, data: BulkAdvanceIn,
               f'Bulk advance → {stages[data.to_stage]["name"]} · {ok_n}/{len(results)} units', user)
     return {'results': results}
 
+# Mobile app release metadata, surfaced in every workspace response so the
+# sideloaded Android app can prompt when a newer APK exists. Bump
+# APP_LATEST_VERSION_CODE when shipping a new APK; APP_APK_URL (env) points
+# at the direct download when one is hosted.
+APP_LATEST_VERSION_CODE = 2
+APP_MIN_VERSION_CODE = 1
+
+
+def app_meta() -> dict:
+    return {
+        'latest_version_code': APP_LATEST_VERSION_CODE,
+        'min_version_code': APP_MIN_VERSION_CODE,
+        'apk_url': os.environ.get('APP_APK_URL', ''),
+    }
+
+
 PAGINATED = ('units', 'attendance', 'movements')
 
 @router.get('/projects/{pid}/workspace', response_model=Workspace)
@@ -380,6 +397,7 @@ async def workspace(pid: str, user: dict = Depends(get_current_user),
     result['defects'] = await _attach_assignee_names(result['defects'])
     result['activity'] = await database().activity.find({'project_id': pid}, {'_id': 0}).sort('created_at', -1).limit(20).to_list(20)
     result['pagination'] = pagination
+    result['app_meta'] = app_meta()
     return result
 
 @router.post('/projects/{pid}/blocks', response_model=Record)

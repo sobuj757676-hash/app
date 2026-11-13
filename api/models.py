@@ -24,6 +24,7 @@ class Workspace(BaseModel):
     tasks: list[Record] = []
     activity: list[Record]
     pagination: dict = {}
+    app_meta: dict = {}
 
 class LoginIn(BaseModel):
     identifier: str = Field(min_length=1, max_length=120)
@@ -185,6 +186,21 @@ class DefectIn(BaseModel):
     severity: Literal['critical', 'major', 'minor'] = 'major'
     unit_id: str | None = None
     due_date: date | None = None
+    # Client-generated id from the mobile app's offline queue: a retried
+    # create with the same client_id returns the original defect instead of
+    # inserting a duplicate.
+    client_id: str | None = Field(default=None, max_length=64)
+
+
+class AttendanceBatchEntryIn(BaseModel):
+    worker_id: str = Field(min_length=1, max_length=100)
+    date: date
+    status: Literal['present', 'absent', 'leave']
+    hours: float = Field(default=8, ge=0, le=16)
+
+
+class AttendanceBatchIn(BaseModel):
+    entries: list[AttendanceBatchEntryIn] = Field(min_length=1, max_length=200)
 
 class DefectPatchIn(BaseModel):
     title: str | None = Field(default=None, min_length=2, max_length=150)

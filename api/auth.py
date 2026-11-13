@@ -40,13 +40,22 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+# Field roles (worker/supervisor) get a longer session: their app queues
+# writes offline all shift, and a 7-day expiry dying mid-week strands that
+# queue behind a re-login. Accounts can still be revoked instantly via the
+# active flag, which get_current_user checks on every request.
+FIELD_TOKEN_DAYS = 30
+FIELD_ROLES = ('worker', 'supervisor')
+
+
 def create_token(user: dict) -> str:
     now = datetime.now(timezone.utc)
+    days = FIELD_TOKEN_DAYS if user.get('role') in FIELD_ROLES else TOKEN_DAYS
     payload = {
         "sub": user["id"],
         "role": user.get("role"),
         "iat": int(now.timestamp()),
-        "exp": int((now + timedelta(days=TOKEN_DAYS)).timestamp()),
+        "exp": int((now + timedelta(days=days)).timestamp()),
     }
     return jwt.encode(payload, AUTH_SECRET, algorithm=ALGORITHM)
 

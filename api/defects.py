@@ -69,6 +69,13 @@ async def _history(defect_id: str, status: str, note: str, user: dict):
 async def create_defect(pid: str, data: DefectIn,
                         user: dict = Depends(require_roles(*OPS_ROLES, 'worker'))):
     await get('projects', pid)
+    if data.client_id:
+        # Offline-queue retry dedupe: the app generates client_id at report
+        # time; a replayed create returns the defect already stored.
+        existing = await database().defects.find_one(
+            {'project_id': pid, 'client_id': data.client_id}, {'_id': 0})
+        if existing:
+            return (await _attach_assignee_names([existing]))[0]
     block = level = number = ''
     if data.unit_id:
         unit = await get('units', data.unit_id)
@@ -87,6 +94,7 @@ async def create_defect(pid: str, data: DefectIn,
         'history': [{'status': 'open', 'by_id': user['id'], 'by_name': user['name'],
                      'at': now(), 'note': 'Reported'}],
         'verified_by': None, 'closed_at': None,
+        'client_id': data.client_id,
         'created_at': now(), 'updated_at': now(),
     }
     await log(pid, 'defect', f'Defect reported · {_label(doc)} · {doc["title"]}', user)

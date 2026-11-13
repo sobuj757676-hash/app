@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from mangum import Mangum
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -50,6 +51,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# The workspace snapshot is the app's big payload (~850 KB JSON at 465
+# units); gzip cuts it ~85% on weak site connections.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 from routes import router  # noqa: E402
 from operations import router as operations_router  # noqa: E402
