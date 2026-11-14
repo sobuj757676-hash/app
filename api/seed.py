@@ -152,9 +152,67 @@ async def _seed_demo_worker(db):
         upsert=True,
     )
 
+# ENTERPRISE tier modules (PRD v2.0 §1.3). Duplicated inline from
+# v2_core.MODULES_BY_TIER on purpose: seed is imported by index.py before
+# the routers and importing v2_core here would cycle (v2_core -> routes ->
+# seed). Keep the two lists in sync.
+_ENTERPRISE_MODULES = [
+    'CORE_4ZONE_MATRIX', 'DAILY_PLAN', 'BATCH_CHECKOFF', 'DEFECTS_3TAP',
+    'GANG_ATTENDANCE', 'DRAWING_VAULT', 'VO_CLAIMS', 'LIVE_POWER_LOTO',
+    'TOOLBOX_SAFETY', 'DIGITAL_TC_SHEETS', 'SMART_STORE_WASTAGE',
+    'QR_TOOL_TRACKER', 'AUTO_PAYROLL_MOM', 'QS_PROGRESS_PROFIT',
+]
+
+async def _seed_platform(db):
+    """v2 multi-tenant bootstrap: default tenant for all legacy data, plus
+    the platform super admin. All upserts use $setOnInsert so an operator's
+    later edits are never overwritten."""
+    from auth import hash_password
+    now = datetime.now(timezone.utc).isoformat()
+    await db.companies.update_one(
+        {'id': 'company-default'},
+        {'$setOnInsert': {
+            'id': 'company-default', 'company_name': 'VoltCraft Electrical',
+            'uen_number': 'LEGACY-000', 'bca_grade': 'ME05',
+            'subscription_tier': 'ENTERPRISE',
+            'enabled_modules': list(_ENTERPRISE_MODULES),
+            'max_projects': 100, 'max_users': 1000, 'status': 'ACTIVE',
+            'created_at': now,
+        }},
+        upsert=True,
+    )
+    await db.users.update_one(
+        {'id': 'user-super-admin'},
+        {'$setOnInsert': {
+            'id': 'user-super-admin', 'email': 'super@voltcraft.local',
+            'name': 'Platform Super Admin',
+            'password_hash': hash_password('changeme123'),
+            'role': 'super_admin', 'worker_id': None, 'active': True,
+            'must_change_password': False, 'company_id': None,
+            'created_at': now, 'last_login_at': None,
+        }},
+        upsert=True,
+    )
+    # Backfill: every pre-v2 user (except the platform super admin) belongs
+    # to the default tenant.
+    await db.users.update_many(
+        {'company_id': {'$exists': False}, 'role': {'$ne': 'super_admin'}},
+        {'$set': {'company_id': 'company-default'}})
+
 async def initialize(db):
     for coll in ['projects', 'blocks', 'units', 'workers', 'materials', 'expenses', 'inspections', 'tests', 'activity', 'movements', 'attendance', 'users', 'defects', 'tasks', 'photos', 'notifications']:
         await db[coll].create_index('id', unique=True)
+    # v2 (Milestone 1) collections + tenant indexes.
+    await db.companies.create_index('id', unique=True)
+    await db.companies.create_index('uen_number', unique=True, sparse=True)
+    await db.platform_apk_releases.create_index('version_code', unique=True)
+    await db.work_zones.create_index('id', unique=True)
+    await db.work_zones.create_index(
+        [('company_id', 1), ('project_id', 1), ('block', 1), ('zone_code', 1)], unique=True)
+    await db.work_zones.create_index(
+        [('company_id', 1), ('project_id', 1), ('block', 1), ('floor', 1)])
+    await db.zone_tasks.create_index('id', unique=True)
+    await db.processed_idempotency_keys.create_index('idempotency_key', unique=True)
     await db.units.create_index([('project_id', 1), ('block_id', 1), ('level', 1), ('number', 1)], unique=True)
     await db.attendance.create_index([('worker_id', 1), ('date', 1)], unique=True)
     await db.users.create_index('email', unique=True, sparse=True)
@@ -167,6 +225,7 @@ async def initialize(db):
     await db.notifications.create_index([('user_id', 1), ('read', 1), ('created_at', -1)])
     await _seed_admin(db)
     await _seed_demo_worker(db)
+    await _seed_platform(db)
     # Backfill the RTO checklist template onto projects created before Phase 2.
     await db.projects.update_many(
         {'rto_checklist_template': {'$exists': False}},

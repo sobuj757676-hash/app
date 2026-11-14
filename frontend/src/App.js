@@ -31,6 +31,9 @@ import PasswordSettings from './pages/settings/PasswordSettings';
 import LanguageSettings from './pages/settings/LanguageSettings';
 import Users from './pages/Users';
 import Login from './pages/Login';
+import SuperAdminTenants from './pages/v2/SuperAdminTenants';
+import ProjectWizard from './pages/v2/ProjectWizard';
+import ProjectMatrix from './pages/v2/ProjectMatrix';
 import './App.css';
 import './fixes-a.css';
 import './plan-tasks.css';
@@ -104,6 +107,9 @@ function Shell(){
    <Route path="/settings/password" element={<PasswordSettings/>}/>
    <Route path="/settings/language" element={<LanguageSettings/>}/>
    <Route path="/users" element={<Users/>}/>
+   <Route path="/super-admin/tenants" element={<SuperAdminTenants/>}/>
+   <Route path="/projects/new" element={<ProjectWizard/>}/>
+   <Route path="/projects/:id/matrix" element={<ProjectMatrix/>}/>
    <Route path="*" element={<Navigate to="/" replace/>}/>
   </Route>
  </Routes>;

@@ -299,3 +299,65 @@ class PointTemplateRow(BaseModel):
 
 class PointTemplatesIn(BaseModel):
     templates: dict[str, list[PointTemplateRow]] = Field(default_factory=dict)
+
+# ---------- v2 blueprint (Milestone 1): multi-tenant core + 4-zone ----------
+
+class CompanyIn(BaseModel):
+    company_name: str = Field(min_length=2, max_length=150)
+    uen_number: str = Field(min_length=3, max_length=30)
+    bca_grade: str = Field(default='ME05', max_length=20)
+    subscription_tier: Literal['STARTER', 'PRO', 'ENTERPRISE'] = 'STARTER'
+    max_projects: int = Field(default=2, ge=1, le=10000)
+    max_users: int = Field(default=30, ge=1, le=100000)
+    office_address: str = Field(default='', max_length=300)
+    contact_phone: str = Field(default='', max_length=30)
+    admin_full_name: str = Field(min_length=2, max_length=100)
+    admin_phone: str = Field(min_length=4, max_length=30)
+    admin_temp_password: str = Field(min_length=8, max_length=72)
+
+class CompanyPatchIn(BaseModel):
+    status: Literal['ACTIVE', 'READ_ONLY', 'SUSPENDED'] | None = None
+    subscription_tier: Literal['STARTER', 'PRO', 'ENTERPRISE'] | None = None
+    enabled_modules: list[str] | None = None
+    max_projects: int | None = Field(default=None, ge=1, le=10000)
+    max_users: int | None = Field(default=None, ge=1, le=100000)
+
+class ApkReleaseIn(BaseModel):
+    version_code: int = Field(ge=1)
+    version_name: str = Field(min_length=1, max_length=30)
+    min_required_version_code: int = Field(ge=1)
+    apk_download_url: str = Field(default='', max_length=500)
+    sha256_checksum: str = Field(default='', max_length=128)
+    release_notes_en: str = Field(default='', max_length=2000)
+
+class StackIn(BaseModel):
+    stack: str = Field(min_length=1, max_length=20)
+    unit_type: str = Field(min_length=1, max_length=40)
+
+class ExternalZoneIn(BaseModel):
+    zone_code: str = Field(min_length=1, max_length=60)
+    floor: str = Field(min_length=1, max_length=20)
+    subtype: str = Field(min_length=1, max_length=100)
+
+class BlockConfigIn(BaseModel):
+    block: str = Field(min_length=1, max_length=16)
+    floor_from: int = Field(ge=1, le=60)
+    floor_to: int = Field(ge=1, le=60)
+    stacks: list[StackIn] = Field(min_length=1, max_length=50)
+    external_zones: list[ExternalZoneIn] | None = None
+
+class ProjectV2In(BaseModel):
+    project_code: str = Field(min_length=2, max_length=40)
+    project_name: str = Field(min_length=2, max_length=150)
+    project_type: Literal['HDB_BTO', 'HDB_HIP', 'COMMERCIAL_ME'] = 'HDB_BTO'
+    main_contractor_name: str = Field(default='', max_length=150)
+    company_id: str | None = Field(default=None, max_length=100)
+    blocks_config: list[BlockConfigIn] = Field(min_length=1, max_length=50)
+
+class BatchAdvanceIn(BaseModel):
+    work_zone_ids: list[str] = Field(min_length=1, max_length=500)
+    from_stage_code: str = Field(min_length=1, max_length=10)
+    to_stage_code: str = Field(min_length=1, max_length=10)
+    lock_completed_stage: bool = True
+    pre_rto_readiness: dict = Field(default_factory=dict)
+    idempotency_key: str = Field(min_length=1, max_length=200)

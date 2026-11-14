@@ -17,7 +17,8 @@ if not AUTH_SECRET:
 
 ALGORITHM = "HS256"
 TOKEN_DAYS = 7
-ROLES = ("admin", "manager", "engineer", "supervisor", "worker", "viewer")
+ROLES = ("admin", "manager", "engineer", "supervisor", "worker", "viewer",
+         "super_admin", "company_admin", "pm", "qs", "storekeeper", "hr")
 
 # Operational writes (units, inspections request, tests, points, workforce, materials)
 OPS_ROLES = ("admin", "manager", "engineer", "supervisor")
@@ -57,6 +58,8 @@ def create_token(user: dict) -> str:
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(days=days)).timestamp()),
     }
+    if user.get("company_id"):
+        payload["company_id"] = user["company_id"]
     return jwt.encode(payload, AUTH_SECRET, algorithm=ALGORITHM)
 
 
@@ -95,8 +98,36 @@ def require_roles(*roles):
 
 
 def public_user(user: dict) -> dict:
-    return {
+    out = {
         key: user.get(key)
         for key in ("id", "name", "email", "phone", "role", "worker_id",
                     "active", "must_change_password", "created_at", "last_login_at")
     }
+    for key in ("company_id", "preferred_lang"):
+        if user.get(key) is not None:
+            out[key] = user[key]
+    return out
+
+
+async def get_current_tenant(user: dict = Depends(get_current_user)) -> dict:
+    """Resolve the caller's tenant (company) for v2 endpoints.
+
+    super_admin is platform-level and has no tenant (company=None). Every
+    other user resolves to their company doc; legacy users without a
+    company_id fall back to the seeded "company-default" tenant. A missing
+    company doc is treated as the default tenant (never a hard failure);
+    a SUSPENDED company is a hard 403.
+    """
+    if user.get("role") == "super_admin":
+        return {"user": user, "company": None}
+    db = database()
+    company_id = user.get("company_id") or "company-default"
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0})
+    if company is None and company_id != "company-default":
+        company = await db.companies.find_one({"id": "company-default"}, {"_id": 0})
+    if company is not None and company.get("status") == "SUSPENDED":
+        raise HTTPException(403, {
+            "error_code": "TENANT_SUSPENDED",
+            "message": "This company account is suspended. Please contact the platform administrator.",
+        })
+    return {"user": user, "company": company}

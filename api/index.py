@@ -62,6 +62,7 @@ from defects import router as defects_router  # noqa: E402
 from tasks import router as tasks_router  # noqa: E402
 from photos import router as photos_router  # noqa: E402
 from notify import router as notify_router  # noqa: E402
+from v2_core import router as v2_router  # noqa: E402
 
 # Vercel routes /api/* to api/index.py natively with the full original path,
 # so routes keep their /api prefix here.
@@ -72,6 +73,7 @@ app.include_router(defects_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
 app.include_router(photos_router, prefix="/api")
 app.include_router(notify_router, prefix="/api")
+app.include_router(v2_router, prefix="/api")  # /api/v2/* (router carries /v2)
 
 
 @app.get("/api/health", include_in_schema=False)
