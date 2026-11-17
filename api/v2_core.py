@@ -18,7 +18,7 @@ from pymongo.errors import DuplicateKeyError
 
 from auth import get_current_tenant, get_current_user, hash_password, require_roles
 from models import (ApkReleaseIn, BatchAdvanceIn, CompanyIn, CompanyPatchIn,
-                    ProjectV2In)
+                    DefectV2In, DefectV2StatusIn, ProjectV2In)
 from routes import database, now, uid
 
 router = APIRouter(prefix="/v2")
@@ -614,3 +614,180 @@ async def batch_advance(project_id: str, data: BatchAdvanceIn,
     except DuplicateKeyError:
         pass  # A concurrent twin request already recorded it; response stands.
     return response
+
+
+# ------------------------------------------------- zone defects (Milestone 3)
+# PRD §3.5 / §7.6: 3-tap zero-typing defects linked to work zones, with the
+# simplified 3-state lifecycle OPEN -> FIXED -> CLOSED. These live in the
+# same `defects` collection as v1 unit defects (which carry unit_id and no
+# work_zone_id, so the two flows never collide), extended with company_id,
+# client_defect_id and the PRD room/issue codes. Zone open_defects_count is
+# recomputed from the collection after every mutation — never incremented
+# blind, so retries and replays cannot drift it.
+
+DEFECT_V2_TRANSITIONS = {"OPEN": {"FIXED"}, "FIXED": {"CLOSED"}, "CLOSED": set()}
+DEFECT_V2_CLOSE_ROLES = ("supervisor", "engineer", "manager", "admin",
+                         "company_admin", "pm", "super_admin")
+DEFECT_V2_LIVE = ("OPEN", "FIXED")
+
+
+async def _recount_zone_defects(db, zone_id):
+    count = await db.defects.count_documents(
+        {"work_zone_id": zone_id, "status": {"$in": list(DEFECT_V2_LIVE)}})
+    await db.work_zones.update_one(
+        {"id": zone_id},
+        {"$set": {"open_defects_count": count, "updated_at": now()}})
+    return count
+
+
+async def _idempotent_replay(db, key, company_id):
+    if not key:
+        return None
+    prior = await db.processed_idempotency_keys.find_one(
+        {"idempotency_key": key, "company_id": company_id}, {"_id": 0})
+    return prior["response_body_json"] if prior else None
+
+
+async def _record_idempotency(db, key, company_id, user_id, path, status, body):
+    if not key:
+        return
+    try:
+        await db.processed_idempotency_keys.insert_one({
+            "id": uid(), "idempotency_key": key, "company_id": company_id,
+            "user_id": user_id, "endpoint_path": path,
+            "response_status": status, "response_body_json": body,
+            "processed_at": now(),
+        })
+    except DuplicateKeyError:
+        pass  # A concurrent twin already recorded it; the response stands.
+
+
+def _public_zone_defect(doc):
+    return {k: v for k, v in doc.items() if k != "_id"}
+
+
+@router.post("/projects/{project_id}/defects", status_code=201)
+async def create_zone_defect(project_id: str, data: DefectV2In,
+                             tenant: dict = Depends(get_current_tenant)):
+    db = database()
+    user = tenant["user"]
+    project = await _get_tenant_project(db, user, project_id)
+    company_id = project["company_id"]
+
+    replay = await _idempotent_replay(db, data.idempotency_key, company_id)
+    if replay is not None:
+        return replay
+
+    # Offline-queue retry dedupe (same rule as v1 client_id): a replayed
+    # create returns the defect already stored for this tenant.
+    existing = await db.defects.find_one(
+        {"company_id": company_id, "client_defect_id": data.client_defect_id},
+        {"_id": 0})
+    if existing:
+        return _public_zone_defect(existing)
+
+    zone = await db.work_zones.find_one(
+        {"id": data.work_zone_id, "project_id": project_id,
+         "company_id": company_id}, {"_id": 0})
+    if not zone:
+        raise _err(404, "ZONE_NOT_FOUND",
+                   f"Work zone {data.work_zone_id} not found in this project.",
+                   work_zone_id=data.work_zone_id)
+
+    stamp = now()
+    doc = {
+        "id": uid(),
+        "client_defect_id": data.client_defect_id,
+        "company_id": company_id,
+        "project_id": project_id,
+        "work_zone_id": zone["id"],
+        "block": zone["block"],
+        "floor": zone["floor"],
+        "unit_or_zone_code": zone["zone_code"],
+        "room_code": data.room_code,
+        "issue_code": data.issue_code,
+        "status": "OPEN",
+        "local_photo_filename": data.local_photo_filename
+            or f"defect_{data.client_defect_id}.jpg",
+        "watermark_text": data.watermark_text or "",
+        "reported_by_user_id": user["id"],
+        "reported_by_name": user["name"],
+        "fixed_by_user_id": None,
+        "fixed_by_name": None,
+        "closed_by_user_id": None,
+        "closed_by_name": None,
+        "reported_at": data.reported_at or stamp,
+        "fixed_at": None,
+        "closed_at": None,
+        "created_at": stamp,
+        "updated_at": stamp,
+    }
+    await db.defects.insert_one(dict(doc))
+    await _recount_zone_defects(db, zone["id"])
+    await _record_idempotency(db, data.idempotency_key, company_id, user["id"],
+                              f"/api/v2/projects/{project_id}/defects", 201, doc)
+    return doc
+
+
+@router.get("/projects/{project_id}/defects")
+async def list_zone_defects(project_id: str,
+                            status: str | None = Query(None),
+                            tenant: dict = Depends(get_current_tenant)):
+    db = database()
+    user = tenant["user"]
+    await _get_tenant_project(db, user, project_id)
+    filt = {"project_id": project_id, "work_zone_id": {"$exists": True}}
+    if status:
+        filt["status"] = status
+    if user.get("role") == "worker":
+        # Workers see the defects they reported (v1 visibility rule).
+        filt["reported_by_user_id"] = user["id"]
+    docs = await db.defects.find(filt, {"_id": 0}).sort(
+        "created_at", -1).to_list(5000)
+    return [_public_zone_defect(d) for d in docs]
+
+
+@router.put("/defects/{client_defect_id}/status")
+async def transition_zone_defect(client_defect_id: str, data: DefectV2StatusIn,
+                                 tenant: dict = Depends(get_current_tenant)):
+    db = database()
+    user = tenant["user"]
+    company_id = _effective_company_id(user)
+    filt = {"client_defect_id": client_defect_id,
+            "work_zone_id": {"$exists": True}}
+    if company_id is not None:
+        filt["company_id"] = company_id
+    defect = await db.defects.find_one(filt, {"_id": 0})
+    if not defect:
+        raise _err(404, "DEFECT_NOT_FOUND",
+                   f"Defect {client_defect_id} not found.")
+    company_id = defect["company_id"]
+
+    replay = await _idempotent_replay(db, data.idempotency_key, company_id)
+    if replay is not None:
+        return replay
+
+    target = data.target_status
+    if target not in DEFECT_V2_TRANSITIONS.get(defect["status"], set()):
+        raise _err(422, "INVALID_DEFECT_TRANSITION",
+                   f"Cannot move defect from {defect['status']} to {target}.")
+    if target == "CLOSED" and user.get("role") not in DEFECT_V2_CLOSE_ROLES:
+        raise _err(403, "FORBIDDEN",
+                   "Only a supervisor or above can verify & close a defect.")
+
+    stamp = now()
+    patch = {"status": target, "updated_at": stamp}
+    if target == "FIXED":
+        patch.update({"fixed_by_user_id": user["id"],
+                      "fixed_by_name": user["name"], "fixed_at": stamp})
+    else:
+        patch.update({"closed_by_user_id": user["id"],
+                      "closed_by_name": user["name"], "closed_at": stamp})
+    await db.defects.update_one({"id": defect["id"]}, {"$set": patch})
+    await _recount_zone_defects(db, defect["work_zone_id"])
+    updated = await db.defects.find_one({"id": defect["id"]}, {"_id": 0})
+    body = _public_zone_defect(updated)
+    await _record_idempotency(
+        db, data.idempotency_key, company_id, user["id"],
+        f"/api/v2/defects/{client_defect_id}/status", 200, body)
+    return body

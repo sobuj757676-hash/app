@@ -361,3 +361,33 @@ class BatchAdvanceIn(BaseModel):
     lock_completed_stage: bool = True
     pre_rto_readiness: dict = Field(default_factory=dict)
     idempotency_key: str = Field(min_length=1, max_length=200)
+
+# Milestone 3: 3-tap zone defects (PRD §3.5 / §7.6). Room and issue codes
+# are the PRD's canonical sets — the mobile builder sends them verbatim.
+DEFECT_ROOM_CODES = (
+    'DB_CLOSET', 'LIVING_DINING', 'KITCHEN', 'MASTER_BATH', 'COMMON_BATH',
+    'BEDROOM', 'HOUSEHOLD_SHELTER', 'CORRIDOR_TRUNKING', 'LV_ELV_RISER',
+    'VOID_DECK_MSCP')
+DEFECT_ISSUE_CODES = (
+    'CHOKED_CONDUIT', 'DAMAGED_BACKBOX', 'CUT_SHORTED_WIRE',
+    'WRONG_POINT_HEIGHT', 'MISSING_CAST_IN', 'BLOCKED_OTHER_TRADE',
+    'WATER_INGRESS', 'RTO_INSPECTION_SNAG')
+
+class DefectV2In(BaseModel):
+    client_defect_id: str = Field(min_length=1, max_length=64)
+    work_zone_id: str = Field(min_length=1, max_length=200)
+    room_code: Literal['DB_CLOSET', 'LIVING_DINING', 'KITCHEN', 'MASTER_BATH',
+                       'COMMON_BATH', 'BEDROOM', 'HOUSEHOLD_SHELTER',
+                       'CORRIDOR_TRUNKING', 'LV_ELV_RISER', 'VOID_DECK_MSCP']
+    issue_code: Literal['CHOKED_CONDUIT', 'DAMAGED_BACKBOX', 'CUT_SHORTED_WIRE',
+                        'WRONG_POINT_HEIGHT', 'MISSING_CAST_IN',
+                        'BLOCKED_OTHER_TRADE', 'WATER_INGRESS',
+                        'RTO_INSPECTION_SNAG']
+    local_photo_filename: str | None = Field(default=None, max_length=128)
+    watermark_text: str | None = Field(default=None, max_length=500)
+    reported_at: str | None = Field(default=None, max_length=40)
+    idempotency_key: str | None = Field(default=None, max_length=200)
+
+class DefectV2StatusIn(BaseModel):
+    target_status: Literal['FIXED', 'CLOSED']
+    idempotency_key: str | None = Field(default=None, max_length=200)

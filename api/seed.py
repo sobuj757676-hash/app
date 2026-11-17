@@ -220,6 +220,9 @@ async def initialize(db):
     await db.defects.create_index([('project_id', 1), ('status', 1)])
     await db.defects.create_index([('project_id', 1), ('assigned_to', 1)])
     await db.defects.create_index([('project_id', 1), ('client_id', 1)], sparse=True)
+    # Milestone 3: v2 zone defects dedupe by client_defect_id per tenant.
+    await db.defects.create_index([('company_id', 1), ('client_defect_id', 1)], sparse=True)
+    await db.defects.create_index([('work_zone_id', 1), ('status', 1)], sparse=True)
     await db.tasks.create_index([('project_id', 1), ('assignees', 1), ('status', 1)])
     await db.photos.create_index([('project_id', 1), ('entity_type', 1), ('entity_id', 1)])
     await db.notifications.create_index([('user_id', 1), ('read', 1), ('created_at', -1)])
